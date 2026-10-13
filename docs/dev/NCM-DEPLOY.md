@@ -130,6 +130,62 @@ powershell -ExecutionPolicy Bypass -File docs\dev\ncm-api.ps1
 
 ---
 
+## 切到云端后，已登录的账号会失效吗？
+
+**不会。** 实测结论（2026-10-13，一加 Ace 3 真机）：
+
+### 登录态存在哪
+
+**存在 App 本地，不是服务端 session。**
+
+| 位置 | 内容 |
+| --- | --- |
+| `localStorage["online_provider:netease:cookie"]` | 完整的 cookie 字符串（约 3900 字符：`MUSIC_A_T` / `MUSIC_R_U` / `MUSIC_U` / `__csrf` …） |
+| `document.cookie` | **空** —— Folia 根本不用浏览器 cookie jar |
+
+写入方是 `src/services/onlineMusic/providerStorage.ts`
+（`writeProviderSessionValue` → `localStorage.setItem`），
+读取方 `readProviderSessionValue`。**只是把 cookie 当字符串存在本地**，
+每个请求由 `fetchWithCreds`（`netease.ts:112`，`credentials: 'include'`）
+连同 `?cookie=` 一起发出去。
+
+服务端侧 `server.js:224-232` 只是 `req.headers.cookie` → `req.cookies` 的无状态解析，
+**不维护任何会话**。所以换一台服务器，App 把同一个 cookie 发过去就继续认。
+
+### 真机实测（换服务器前先验证现状是好的）
+
+| 请求 | 结果 |
+| --- | --- |
+| `/login/status` | `200`，`account.id: 18032498803`，有用户名 |
+| `/user/playlist` | `200`，返回 playlist 数组 |
+
+### 切到 Vercel 后会怎样
+
+**反而更正确。** 看 `server.js:364-378`：
+
+```js
+if (req.protocol === 'https') {
+  res.append('Set-Cookie', cookies.map(c => c + '; SameSite=None; Secure'))  // ← Vercel 走这条
+} else {
+  res.append('Set-Cookie', cookies)   // ← 当前局域网 http 走这条，不加 SameSite
+}
+```
+
+当前 http 方案下 cookie 不带 `SameSite`，Chromium 默认按 `Lax` 处理；
+Android WebView 的 CookieManager 对此比较宽松，加上 Folia 本来就绕开了 cookie jar
+（走 localStorage），所以照样能用。**换到 Vercel 的 https 后会带上
+`SameSite=None; Secure`**，这才是跨站场景下正确的写法。
+
+### 两个真实的风险（服务端策略，我无法预判）
+
+1. **IP 切换可能触发网易云风控。** 从 `192.168.0.104`（家宽局域网）换成 Vercel 的
+   边缘 IP，等于「同一账号突然换了出口 IP」。网易云有可能要求重新验证或直接拒绝。
+   真遇到了只能在 App 里重新扫码一次。
+2. **cookie 本身有有效期。** `MUSIC_R_U` 的 `Max-Age` 是 15552000 秒（**约 180 天**），
+   过期后必须重新扫码。这与部署方式无关，局域网也一样。
+
+---
+
 ## 还没解决的：QQ 与酷狗
 
 `.env.local` 里只配了网易云。另外两个平台仍然会抛各自的 `*_API_BASE_MISSING`：
