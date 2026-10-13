@@ -8,6 +8,81 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-13-playback-lan` — 打通播放：网易云二维码登录可用（局域网方案）
+
+**性质**：功能。按用户选择，当前先用**局域网直连**验证可行性，长期方案（natfrp/Vercel）待定。
+
+#### 根因
+
+「连接至网易云音乐」加载不出二维码，不是 UI 或权限问题，而是**一个请求都发不出去**：
+
+`src/services/netease.ts:106` 在拿不到 API 地址时直接抛
+`NETEASE_API_BASE_MISSING`（"Please configure VITE_NETEASE_API_BASE"），
+而 `VITE_NETEASE_API_BASE` 没配。桌面版靠 Electron 主进程内嵌
+`@neteasecloudmusicapienhanced/api` 拿到 `http://127.0.0.1:<port>`，
+**WebView 里没有主进程，跑不了 Node 服务**，必须指向一个外部 API。
+
+#### 改动（3 处 + 1 个脚本）
+
+| 文件 | 改动 |
+| --- | --- |
+| `capacitor.config.ts` | `server.androidScheme` `https` → **`http`**，`cleartext` `false` → **`true`** |
+| `android/app/src/main/AndroidManifest.xml` | `<application>` 加 `android:networkSecurityConfig` |
+| `android/app/src/main/res/xml/network_security_config.xml` | **新增**：明文白名单，只放行 `192.168.0.104` |
+| `docs/dev/ncm-api.ps1` | **新增**：网易云 API 服务的启动 / `-Stop` / `-Status` |
+| `.env.local` | 新增（已被 `.gitignore` 的 `.env*.local` 排除，**不入库**），写 `VITE_NETEASE_API_BASE` |
+
+外加一条 Windows 防火墙入站规则（提权加的，见下）。
+
+#### 两个关键技术障碍（都不在 Folia 代码里）
+
+1. **混合内容**：`androidScheme` 是 `https` 时，`https` 页面去请求 `http://192.168.0.104:3000`
+   会被 Chromium 直接拦掉 —— 实测 WebView 里 `fetch` 报 `TypeError: Failed to fetch`，
+   同一台机器 `curl` 和 `ping` 都通。改成 `http://localhost` 后解除
+   （`http://localhost` 仍被 Chromium 视为 secure context，Service Worker /
+   vite-plugin-pwa 不受影响；https 独有用到的 File System Access API 即本地音乐库
+   在 Android 本来就不可用，不构成损失）。
+2. **Android 9+ 默认禁明文**：`cleartext: true` 只影响 Capacitor 自身，**不会**往
+   AndroidManifest 写 `usesCleartextTraffic`（实测生成结果里确实没有）。必须自己配
+   network security config。这里没用全局 `usesCleartextTraffic="true"`，而是精确放行
+   音源那个 IP：App 的 HTML/JS/CSS 全部打进 APK assets，运行时只从本地加载，
+   不访问任何外部 CDN（importmap 已剥离），明文流量没有别的正当用途。
+
+#### 实测（一加 Ace 3 / Android 16）
+
+| 步骤 | 结果 |
+| --- | --- |
+| 防火墙规则 | `Folia NCM API 3000 (LAN only)`，Enabled / Private / Inbound / Allow。**加之前 ping 通但 TCP 超时，加之后通** |
+| ncm 服务 | `node app.js` → `Server started successfully @ http://localhost:3000`，匿名 token 注册成功 |
+| CORS | 响应头 `access-control-allow-origin: https://localhost`（Origin 回显）、`allow-credentials: true`、`allow-methods: PUT,POST,GET,DELETE,OPTIONS` ⇒ **CORS 这关本来就通** |
+| WebView 取 key | `origin: http://localhost`，`status 200`，`{"code":200,"unikey":"..."}` |
+| 真实 UI | 点「连接在线平台 → 网易云」，**二维码渲染出来**：`data:image/png;base64,…` 200×200，文案「使用网易云APP扫码 / 请扫描二维码 / 打开网易云音乐APP > 发现 > 扫一扫」 |
+
+#### 踩到的坑
+
+- **`adb shell input tap` 点不动 WebView 里的元素**（实测无效），必须用 CDP 直派
+  `PointerEvent`。本轮所有点击都是 CDP 发的。
+- **PowerShell 里单个字符串被 `[0]` 索引取的是第一个字符**：`"192.168.0.104"[0] === '1'`，
+  导致脚本把局域网地址打印成 `http://1:3000`。`Select-Object -ExpandProperty` 只有一块网卡时
+  返回的是字符串不是数组，必须 `@(...)` 强制成数组。
+- **`.ps1` 含中文必须 UTF-8 BOM**（PS 5.1 按 ANSI 读会乱码）；仓库根的 `.ps1` 还要向上找
+  `package.json` 而不是写死退一级（android-build.ps1 踩过同一个坑）。
+
+#### 已知限制（如实记录）
+
+- ⚠️ **这台 API 服务跑在电脑上，电脑不开机 / 服务没启动就没法播网易云。**
+  这只是验证可行性的过渡方案。长期要么把服务部署到公网（natfrp https 隧道或 Vercel），
+  要么每次用前跑 `docs\dev\ncm-api.ps1`。换方案后可以把
+  `network_security_config.xml` 整个删掉、`cleartext` 改回 `false`。
+- **换网络后本机 IP 会变**，要同步改 `.env.local` 与 `network_security_config.xml` 再重建。
+- **只配了网易云**。`VITE_QQ_API_BASE` / `VITE_KUGOU_API_BASE` 仍未配置，
+  那两个平台仍会报同样的 `*_API_BASE_MISSING`。
+- QQ / 酷狗的后端没有现成的本地包（`api-ts/` 里只有 theme / lyric / qq 的部分 handler，
+  没有酷狗），要另外解决。
+- 后台播放（锁屏断播）未动。
+
+---
+
 ### `dev-2026-10-13-immersive` — 沉浸式全屏（状态栏 + 手势导航条隐藏）
 
 **性质**：功能（一行配置 + 实测截图验证）

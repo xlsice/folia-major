@@ -16,12 +16,19 @@ const config: CapacitorConfig = {
   loggingBehavior: 'debug',
   backgroundColor: '#09090b',
   server: {
-    // 加载打进 APK 的本地 dist/，不走远程站点。androidScheme 用 https 才能拿到
-    // 安全上下文（File System Access API 等依赖它），cleartext 关闭对应
-    // AndroidManifest 里的 android:usesCleartextTraffic="false"。
-    androidScheme: 'https',
+    // 加载打进 APK 的本地 dist/，不走远程站点。
+    //
+    // androidScheme 用 http（不是 https）：音源 API 只能跑在局域网/内网的明文 HTTP 上，
+    // 而 https 页面去请求 http:// 属混合内容，会被 Chromium 直接拦掉（实测 WebView 里
+    // fetch http://192.168.0.104:3000 报 "TypeError: Failed to fetch"）。
+    // http://localhost 仍被 Chromium 视为 secure context（localhost 是特例），所以
+    // Service Worker / vite-plugin-pwa 不受影响，https 独有用到的 File System Access API
+    // （本地音乐库）在 Android 本来就不可用，不构成损失。
+    androidScheme: 'http',
     hostname: 'localhost',
-    cleartext: false,
+    // 与上面的 http scheme 配套：manifest 需要 usesCleartextTraffic 放行明文请求，
+    // 否则 WebView 仍会在网络层拦掉对音源 API 的请求。
+    cleartext: true,
   },
   plugins: {
     SplashScreen: {

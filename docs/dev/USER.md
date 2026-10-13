@@ -93,22 +93,24 @@
 
 ---
 
-## 当前关注（2026-10-13 晚间快照，真机实测已收尾）
+## 当前关注（2026-10-13 深夜快照：能播了 + 沉浸式已做）
 
-1. **Folia 安卓版** —— 主线。`Android` 分支 + Capacitor 8.5.3，
-   **15.1MB 可安装 APK**（minSdk 24 / targetSdk 36），归档 `C:\Users\wodes\XLS\APP\Folia-Android\`。
-   **已在真机跑通**：一加 Ace 3 / Android 16，`adb install` 11 秒，启动无 JS 报错、无网络失败，
-   PSS ≈ 208MB。真机调试通道已通：`adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>`
-   → CDP 可量真实 DOM（debug 构建自带 WebView 调试，无需改代码）。
-   **下一步候选**：原生后台播放 / 音源后端 / 旋转后缝自动收起。
-   方案与全部踩坑见 [`docs/dev/ANDROID.md`](ANDROID.md)。
-2. **后台播放 —— 现在是第一优先级**（布局问题已修，不再挡路）。
-   项目用 Web MediaSession，**WebView 里不生效**（`dumpsys media_session` 实测搜不到 `foliamajor`）
+1. **Folia 安卓版** —— 主线，已装在他的一加 Ace 3 上实测。
+   `Android` 分支，Capacitor 8.5.3，**15.6MB APK**（minSdk 24 / targetSdk 36）。
+   **已达成**：沉浸式全屏（状态栏 + 手势导航条隐藏）、窄屏缝宽度 bug 修复、
+   **网易云扫码登录可用（二维码真的渲染出来了）**。
+   归档 `C:\Users\wodes\XLS\APP\Folia-Android\Folia-Android-debug-0.7.18.apk`。
+2. **⚠️ 用之前必须先起音源服务**（这是当前方案最大的使用门槛）：
+   `powershell -ExecutionPolicy Bypass -File docs\dev\ncm-api.ps1`
+   —— 电脑不开机就播不了网易云。`-Status` 看状态，`-Stop` 停。
+   **长期方案（natfrp https 隧道 或 Vercel）还没定**，定了之后可以把
+   network_security_config.xml 删掉、`cleartext` 改回 false。
+   换网络后本机 IP 会变，要同步改 `.env.local` 和 network_security_config.xml。
+3. **后台播放 —— 现在是最大缺口**。`dumpsys media_session` 实测搜不到 `foliamajor`
    ⇒ 锁屏断播、耳机按键无响应。要写原生 Media3/ExoPlayer + `MediaSessionService`。
-3. **音源后端** —— 酷狗/QQ/网易云是 Node 服务，WebView 跑不了，得部署到服务器，
-   App 用 `VITE_*_API_BASE` 指过去。他有 natfrp 内网穿透经验，可以自建。
-4. **旋转适配（次要）** —— 转屏后相机的缝锚点没重新对位，缝会「被挤出屏幕自动收起」，
-   点边缘标签能唤回。可恢复、不致命，但每次转屏都要多点一下。
+4. **QQ / 酷狗音源还没通** —— `.env.local` 只配了网易云。那两个平台仍报 `*_API_BASE_MISSING`，
+   且酷狗没有现成的本地包（`api-ts/` 里没有），要另外解决。
+5. **旋转适配** —— 按他要求本轮不做。转屏后缝会被挤出屏幕自动收起，点边缘标签能唤回。
 
 > ⚠️ **别再凭截图断言「没做移动端适配」**。上一轮就是这么误判的（详见 CHANGELOG
 > `dev-2026-10-13-seam-viewport`）：竖排与居中都是上游设计意图，真 bug 是量纲混用。
