@@ -8,6 +8,46 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-13-immersive` — 沉浸式全屏（状态栏 + 手势导航条隐藏）
+
+**性质**：功能（一行配置 + 实测截图验证）
+
+#### 变更
+
+`capacitor.config.ts` 的 `SystemBars` 加 `hidden: true`。
+
+依据是 Capacitor **内置**的 SystemBars 插件源码
+（`node_modules/@capacitor/android/.../plugin/SystemBars.java`），不是新装插件：
+
+- `initSystemBars()` 读 `getConfig().getBoolean("hidden", false)`，启动时调 `setHidden(hidden, "")`。
+- `setHidden(true, "")` → `WindowInsetsControllerCompat.hide(Type.systemBars())`。
+  **`systemBars()` 同时包含 `statusBars()` 与 `navigationBars()`**，正好一次干掉
+  顶部状态栏和底部手势导航小黑/白条，不用分两次配。
+- 隐藏后 `WindowInsetsCompat.getInsets(systemBars|displayCutout)` 归零；本机 WebView
+  **138 < 140**（`WEBVIEW_VERSION_WITH_SAFE_AREA_FIX` 阈值），走的是
+  `initWindowInsetsListener` 里 `v.setPadding(0,0,0,0)` 那条分支 ⇒ 内容**天然铺满整屏**，
+  不需要给固定 UI 元素补 safe-area 内边距。实测 `--safe-area-inset-*` 四个值都是 `0px`。
+
+#### 实测（一加 Ace 3 / Android 16）
+
+| 证据 | 值 |
+| --- | --- |
+| 截图 | 状态栏消失、底部导航条消失、内容从最顶端铺到最底端 |
+| `dumpsys window` | `mWindowingMode=fullscreen`、`EDGE_TO_EDGE_ENFORCED`、`bounds=[0,0][1264,2780]`、`layoutInDisplayCutoutMode=always` |
+| WebView | `innerHeight` 738 → **754**（+16），`--safe-area-inset-top/bottom` 均 `0px`，`html/body padding` 均 `0px` |
+
+⚠️ **一处未解释的观察（如实记录）**：`window.screen.height = 795`，而 `innerHeight = 754`，
+差 41 CSS px；`dumpsys` 的窗口配置写的是 `h794dp`。`html/body` 的 padding 都是 0，
+**截图中内容确实是铺满的**，所以这 41px 不产生可见空隙，但来源未定
+（疑为 cutout 或 WebView 视口计算的已知偏差）。不影响使用，未深究。
+
+#### 已知未做
+
+`SystemBars.handleOnConfigurationChanged()` 只重新 `setStyle`，**不重新 `setHidden`**
+⇒ 转屏后系统栏有可能重新出现，需要点一下才恢复。转屏适配整体按用户要求本轮不做。
+
+---
+
 ### `dev-2026-10-13-seam-viewport` — 修上游真 bug：缝把「世界宽度」当成「视口宽度」
 
 **性质**：BUG fix（改了上游 `src/`，非新增）

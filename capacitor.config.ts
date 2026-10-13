@@ -40,7 +40,16 @@ const config: CapacitorConfig = {
       insetsHandling: 'css',
       initialViewportFitValueHint: 'cover',
       // 浅色图标配深色底（Folia 主题底色 #09090b 为近黑）。
+      // 隐藏时这个图标明暗无意义，但保留一个明确值避免落到 DEFAULT 走主题推断。
       style: 'LIGHT',
+      // 沉浸式全屏：隐藏状态栏与手势导航条。
+      // Capacitor 内置 SystemBars 的 hidden → WindowInsetsControllerCompat
+      // .hide(Type.systemBars())，systemBars 同时含 statusBars 与 navigationBars，
+      // 正好是「状态栏 + 底部小黑/白条」一起消失。
+      // 隐藏后 WindowInsetsCompat.getInsets(systemBars) 归零：本机 WebView 138 < 140
+      // 走的是 SystemBars.java 里 setPadding(0,0,0,0) 那条分支，内容因此天然铺满整屏，
+      // 不需要给固定 UI 元素补 safe-area 内边距。
+      hidden: true,
     },
   },
 };
