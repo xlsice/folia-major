@@ -1,5 +1,13 @@
 # Project Skills
 
+> **本仓库有我们的二次开发分支文档。** 在读下面的上游规则之前，先看
+> [`docs/dev/AGENTS.md`](docs/dev/AGENTS.md) —— 里面有许可约束（AGPL §13 网络条款）、
+> Folium 模组扩展点地图、以及一批已实测的坑（切可视化模式只有 Ctrl+K 一条路、
+> tuning 面板在哪个 tab、electron-builder 打包陷阱等）。
+> 配套：[`docs/dev/USER.md`](docs/dev/USER.md)（协作偏好）、
+> [`docs/dev/CHANGELOG-RELEASE.md`](docs/dev/CHANGELOG-RELEASE.md)（二开流水）。
+> 下面的上游内容保持原样，未做任何修改。
+
 本仓库不再把项目规则直接堆在 `AGENTS.md` 中，而是改为按 skill 组织。
 
 使用方式：

@@ -5,6 +5,7 @@ import react from '@vitejs/plugin-react';
 import { commandPinyinPlugin } from './dev/pinyin/commandPinyinPlugin.mjs';
 import { icuFoliaDataPlugin } from './dev/icuFolia/icuFoliaDataPlugin.mjs';
 import { normalizeBuildCommit, resolveBuildKind, resolveBuildRepo } from './dev/build/buildIdentity.mjs';
+import { stripCdnImportmapPlugin } from './dev/android/stripCdnImportmapPlugin.mjs';
 import { VitePWA } from 'vite-plugin-pwa';
 import { execSync } from 'child_process';
 import { createHash } from 'crypto';
@@ -266,6 +267,9 @@ export default async function viteConfig(_config: ConfigEnv): Promise<UserConfig
       devLyricProxyPlugin(),
       commandPinyinPlugin(),
       icuFoliaDataPlugin(),
+      // Android 壳构建（VITE_ANDROID_BUILD=1）时剥离 CDN importmap，让 react 等依赖
+      // 走 vite 正常打包进 dist/，APK 自包含而不是冷启动去外网 CDN 取包。
+      stripCdnImportmapPlugin(),
       react(),
       VitePWA({
         registerType: 'autoUpdate',

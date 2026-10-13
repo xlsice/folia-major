@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: 让 WebView 内容可以铺到刘海/状态栏区域外，
+         edge-to-edge（Android 15/16 对 targetSdk 35+ 强制）下必须显式开启，
+         否则 env(safe-area-inset-*) 恒为 0。桌面浏览器对此无副作用。 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="referrer" content="no-referrer" />
     <meta name="description" content="一个动态歌词播放器，支持 AI 主题生成" />
     <meta name="theme-color" content="#09090b" />
