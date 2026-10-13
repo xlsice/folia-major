@@ -131,9 +131,44 @@ C:\Users\wodes\XLS\APP\Folia-Android\Folia-Android-debug-0.7.18.apk   （归档�
 | 权限 | `INTERNET` + Capacitor 自动加的 `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` |
 | 内含 web 资源 | **1871 个 `assets/public/*` 条目**（`index.html` + 本地 bundle 的 `bootstrap-*.js`） |
 
-⚠️ **尚未在真机验证**：本轮没有连接安卓设备，以下都没测过 ——
-能否安装启动、edge-to-edge 实际观感、WebGL 歌词动画在移动 GPU 上的帧率与发热、
-锁屏后是否断播（预期会断，见下）、音源能否连通。
+⚠️ **真机实测已完成（2026-10-13 23:17，一加 Ace 3 / Android 16）**
+
+| 项 | 结果 |
+| --- | --- |
+| 设备 | OnePlus **PJE110**（一加 Ace 3），Android **16**（SDK 36），arm64-v8a，1264×2780 @ 560dpi |
+| 配对方式 | Android 11+ 无线调试：`adb pair 192.168.0.100:38857 <码>`，之后 adb **自动经 mDNS 发现并连接**，无需手动 `connect` |
+| 安装 | `adb install -r -g`，14.41 MB / **11 秒**，`Success` |
+| 启动 | `topResumedActivity = top.izuna.foliamajor/.MainActivity`，**进程存活且在前台** |
+| 渲染 | ✅ **不是白屏**，中文正常显示，界面完整渲染 |
+| JS 运行时 | ✅ **零 JS 错误、零网络失败**（logcat 无 Uncaught/TypeError/net::ERR） |
+| 内存 | TOTAL PSS **约 203 MB**（RSS 420 MB）—— 偏高，见下 |
+
+#### 实测确认的三条硬结论
+
+1. **✅ Web MediaSession 在 WebView 里确实不生效**（缺口 1 坐实）。
+   `adb shell dumpsys media_session` 输出里**完全搜不到 `foliamajor`**。
+   没有任何系统媒体会话注册 ⇒ 锁屏断播、无通知栏控制、耳机按键无响应，属预期行为。
+
+2. **⚠️ 这台机器的 WebView 是 138.0.7204.179（< 140）** —— 正好落在 Capacitor 源码里
+   标注 `WEBVIEW_VERSION_WITH_SAFE_AREA_FIX = 140` 的阈值之下。
+   也就是说 **`env(safe-area-inset-*)` 在这台机器上返回的值不可信**，
+   必须靠 `insetsHandling: 'css'` 注入的 `--safe-area-inset-*`。这个配置不是可选项。
+
+3. **❌ 布局完全没适配移动端 —— 竖屏横屏都不行**（本次实测最重要的发现）。
+   侧边栏（书库/歌单/电台/专辑/本地）在手机竖屏被压成一条窄带、中文字**一字一行竖排**、
+   左右大片空白；切横屏（794dp × 361dp）后**依旧不变**。
+   → 这是**上游 Folia 自身没有移动端布局**，不是 Capacitor 打包引入的问题。
+   桌面版布局假设宽屏，直接塞进 WebView 就会这样。
+   ⇒ 若要让安卓版真正可用，**移动端布局是必须做的二开工作量**，优先级应排在
+   后台播放之前（布局不可用 = 用户根本用不了；布局可用但不能后台播放 = 能用但体验差）。
+
+#### 附带观察
+
+- **当前并非 edge-to-edge**：顶部状态栏是系统浅色底 + 深色图标，WebView 内容从状态栏
+  下方开始。**好处是没有内容被遮挡，暂时不需要做 inset 适配**；代价是歌词动画无法铺满全屏，
+  不够沉浸。若后续要做沉浸式，需要主动改成 edge-to-edge 并处理 inset。
+- 内存 PSS 约 203 MB 偏高，与 `registry.tsx` eager 拉入 183 个 visualizer 模块
+  （含 three.js / pixi.js）的已知问题吻合，后续应做按需加载。
 
 #### 已知未做（按优先级）
 
