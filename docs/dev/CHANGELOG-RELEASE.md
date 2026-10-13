@@ -8,6 +8,71 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-13-seam-viewport` — 修上游真 bug：缝把「世界宽度」当成「视口宽度」
+
+**性质**：BUG fix（改了上游 `src/`，非新增）
+
+#### 先纠正一个误判
+
+上一轮我判定「布局完全没适配移动端，竖屏横屏都不行」。**这个结论是错的**，用户指出
+「在 PC 端它是故意设计在中间的」——他是对的。读代码 + 真机实测后确认，那两处最扎眼的
+现象**全是上游的设计意图**：
+
+| 现象 | 真相 | 证据 |
+| --- | --- | --- |
+| 页签中文竖排（歌单/电台/专辑/本地） | 设计语言，`.bravais-seam-tabs button { writing-mode: vertical-rl }` | `bravais.css:276`；注释写「像一排书脊」；实测每个 tab 26×52 = 两字竖排，尺寸正常 |
+| 缝居中、两侧是墙 | 设计意图，缝是墙上的「开口」不是侧边栏 | `bravaisConstants.ts:13` `BRAVAIS_SEAM_HOME_WIDTH = 120` |
+| 上游没做移动端 | **有**，而且做得挺细 | `BRAVAIS_NARROW_VIEWPORT_PX = 900`：视口窄于它默认收成 64px 书脊；`getBravaisScale` 的 `<640 → 0.52` 相机档；`LatticeChrome.css` 的 `@media (max-width:640px)` |
+
+**真正的 bug 在别处**：`BravaisStage.tsx` 把 `view.width`（**相机世界坐标**下的可见范围，含缩放档位
+与 `BRAVAIS_OVERSCAN`）当成 `viewportWidth`（**CSS 像素视口宽**）传给了 4 处。它们量纲完全不同。
+
+#### 变更
+
+只改一个文件 `src/library/suites/bravais/BravaisStage.tsx`（+11 / −4）：
+
+新增 `const screenWidth = window.innerWidth`，替换 4 处误用：
+
+| 行 | 原写法 | 影响 |
+| --- | --- | --- |
+| 180 | `frameRef.current.view?.width ?? window.innerWidth` | 面板/海报宽度算错 |
+| 192 | `view?.width ?? 0` | 同上 |
+| 210 | `view?.width ?? 0` | 同上（`resolveVariantWidth`） |
+| 231 | `syncViewport(view.width)` | **主因：窄屏手机上把 64px 书脊顶回 120px 窄缝** |
+
+#### 坑（这才是排查花时间的地方）
+
+1. **`view.width` 与视口宽不是一回事。** 真机实测：手机 361 CSS px，缩放 0.52，世界宽 ≈ 694，
+   含 overscan 后轻松上千 ⇒ 在手机上必然跨过 900 阈值。
+2. **`bravaisSeamLevel.ts:88` 在模块求值时一次性读 `window.innerWidth`**，配合
+   `syncViewport` 的「首次只记录不改等级」，意味着**只有 `view.width` 变化能改 level**。
+   用 CDP 注入 `Page.addScriptToEvaluateOnNewDocument` 录下全生命周期读数，证明
+   `window.innerWidth` **全程恒为 361，从未 ≥900** —— 排除了「初始化就读错」这条假设，
+   才锁定是 `syncViewport` 污染。
+3. **`adb shell input tap` 点不动 WebView 里的元素**（实测无效），改用 CDP `PointerEvent` 直派才生效。
+   别把这个误判成 App 的 bug。
+
+#### 验证（一加 Ace 3 / Android 16，CDP 实测非目测）
+
+| 场景 | 缝开口宽度 | 判定 |
+| --- | --- | --- |
+| 冷启动竖屏 361px | **64px** + `is-compact` | ✅ 窄屏适配生效 |
+| 横屏 754px | **64px**（修复前会翻成 120px） | ✅ **修复的直接证据** |
+| 转回竖屏 | 0px + 边缘标签在场 | 上游「被挤出屏幕自动收起」机制，非本 bug |
+| 点边缘标签唤回 | **64px**，`translateX(14px)` | ✅ 交互链完好 |
+
+- `npm run typecheck` 通过。
+- bravais 单测 **37 文件 / 287 用例全过**（改的是组件层，纯函数未动）。
+- APK 重建并装机验证，`app-debug.apk` 15.1 MB。
+
+#### 已知未做
+
+- **旋转后缝会「被挤出屏幕自动收起」**：相机锚点没有随视口变化重新对位，要点边缘标签唤回。
+  这是**独立于本修复**的另一个移动端适配问题（且有可恢复的降级路径，不是致命缺陷），未处理。
+- 后台播放（Web MediaSession 在 WebView 不生效）、音源后端、本地音乐库仍未做。
+
+---
+
 ### `dev-2026-10-13-android` — 安卓版（Capacitor）工程落地
 
 **性质**：新增平台工程，分支 `Android`（从 `67fb072a` 开出）
@@ -154,13 +219,12 @@ C:\Users\wodes\XLS\APP\Folia-Android\Folia-Android-debug-0.7.18.apk   （归档�
    也就是说 **`env(safe-area-inset-*)` 在这台机器上返回的值不可信**，
    必须靠 `insetsHandling: 'css'` 注入的 `--safe-area-inset-*`。这个配置不是可选项。
 
-3. **❌ 布局完全没适配移动端 —— 竖屏横屏都不行**（本次实测最重要的发现）。
-   侧边栏（书库/歌单/电台/专辑/本地）在手机竖屏被压成一条窄带、中文字**一字一行竖排**、
-   左右大片空白；切横屏（794dp × 361dp）后**依旧不变**。
-   → 这是**上游 Folia 自身没有移动端布局**，不是 Capacitor 打包引入的问题。
-   桌面版布局假设宽屏，直接塞进 WebView 就会这样。
-   ⇒ 若要让安卓版真正可用，**移动端布局是必须做的二开工作量**，优先级应排在
-   后台播放之前（布局不可用 = 用户根本用不了；布局可用但不能后台播放 = 能用但体验差）。
+3. **⚠️~~布局完全没适配移动端~~ —— 此结论已被推翻，见上方 `dev-2026-10-13-seam-viewport`。**
+   当时据截图判定「上游没有移动端布局、竖排是被压扁的」，**这是误判**：
+   竖排（`writing-mode: vertical-rl`）与缝居中都是上游的设计意图，上游另有
+   `BRAVAIS_NARROW_VIEWPORT_PX = 900` 等成套窄屏设计。真实缺陷是
+   `BravaisStage.tsx` 混用了「世界宽度」与「视口宽度」，已修并真机验证。
+   ⇒ 保留此条仅作**教训**：截图目测不足以判定「没适配」，必须读代码 + 量真实 DOM 尺寸。
 
 #### 附带观察
 

@@ -93,18 +93,26 @@
 
 ---
 
-## 当前关注（2026-10-13 快照，已含当日进展）
+## 当前关注（2026-10-13 晚间快照，真机实测已收尾）
 
-1. **Folia 安卓版** —— 主线，已从「问有没有」变成「已产出 APK」。
-   `Android` 分支 + Capacitor 8.5.3，**14.41MB 可安装 APK**
-   （minSdk 24 / targetSdk 36），归档 `C:\Users\wodes\XLS\APP\Folia-Android\`。
-   **下一步：插手机 USB 调试实测**（他人在电脑旁时做），重点看 edge-to-edge 实际观感、
-   WebGL 歌词动画帧率与发热、锁屏是否断播（预期会断）。
+1. **Folia 安卓版** —— 主线。`Android` 分支 + Capacitor 8.5.3，
+   **15.1MB 可安装 APK**（minSdk 24 / targetSdk 36），归档 `C:\Users\wodes\XLS\APP\Folia-Android\`。
+   **已在真机跑通**：一加 Ace 3 / Android 16，`adb install` 11 秒，启动无 JS 报错、无网络失败，
+   PSS ≈ 208MB。真机调试通道已通：`adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>`
+   → CDP 可量真实 DOM（debug 构建自带 WebView 调试，无需改代码）。
+   **下一步候选**：原生后台播放 / 音源后端 / 旋转后缝自动收起。
    方案与全部踩坑见 [`docs/dev/ANDROID.md`](ANDROID.md)。
-2. **后台播放** —— 安卓版最大缺口。项目用 Web MediaSession，**WebView 里不生效**
+2. **后台播放 —— 现在是第一优先级**（布局问题已修，不再挡路）。
+   项目用 Web MediaSession，**WebView 里不生效**（`dumpsys media_session` 实测搜不到 `foliamajor`）
    ⇒ 锁屏断播、耳机按键无响应。要写原生 Media3/ExoPlayer + `MediaSessionService`。
 3. **音源后端** —— 酷狗/QQ/网易云是 Node 服务，WebView 跑不了，得部署到服务器，
    App 用 `VITE_*_API_BASE` 指过去。他有 natfrp 内网穿透经验，可以自建。
+4. **旋转适配（次要）** —— 转屏后相机的缝锚点没重新对位，缝会「被挤出屏幕自动收起」，
+   点边缘标签能唤回。可恢复、不致命，但每次转屏都要多点一下。
+
+> ⚠️ **别再凭截图断言「没做移动端适配」**。上一轮就是这么误判的（详见 CHANGELOG
+> `dev-2026-10-13-seam-viewport`）：竖排与居中都是上游设计意图，真 bug 是量纲混用。
+> 判断 UI 适配问题**必须读代码 + 用 CDP 量真实尺寸**。
 
 ---
 

@@ -148,6 +148,13 @@ const BravaisStage: React.FC<LibrarySuiteStageProps> = ({
     const { layer, owned } = resolveCurrentLayer({ depth: navigation.depth, home, top, previous: previousLayerRef.current });
     previousLayerRef.current = layer;
 
+    // 屏幕视口宽（CSS px）。下面凡是把「视口宽」交给缝的等级切换、列表面板与海报宽度计算的地方，都必须用这个值，
+    // 不能用 view.width——view 是相机世界坐标下的可见范围（含缩放档位与 BRAVAIS_OVERSCAN），和屏幕像素不是一个量纲。
+    // 窄屏手机上这会把 361px 的视口算成上千像素，跨过 BRAVAIS_NARROW_VIEWPORT_PX(900) 于是把缝从 64px 书脊顶回
+    // 120px 窄缝；列表面板（min(420, vw-52)）与歌手海报（clamp(520,680, vw*0.46)）也会算出超出屏幕的宽度。
+    // 视口变化时 view 会跟着变，这条语句随之重渲染，因此直接读 window 即可（无 SSR）。
+    const screenWidth = window.innerWidth;
+
     // B7：缝此刻的开口——等级之上还有表单态、列表面板与过滤输入位的临时展开（bravaisSeamTarget；正在输入过滤词时
     // 书脊 / 折叠的缝展开成完整信息条，首页是窄缝）。
     const seamLevel = useBravaisSeamStore(state => state.level);
@@ -170,7 +177,7 @@ const BravaisStage: React.FC<LibrarySuiteStageProps> = ({
         return {
             surface: target.surface,
             level: current.level,
-            viewportWidth: frameRef.current.view?.width ?? window.innerWidth,
+            viewportWidth: screenWidth,
             formOpen: Boolean(target.seam.collection?.form),
             panelOpen: current.panelFor === target.key && Boolean(target.entries?.hasPanel),
             filterOpen: current.filterOpen,
@@ -182,7 +189,7 @@ const BravaisStage: React.FC<LibrarySuiteStageProps> = ({
     const resolvedSeamTarget = layer
         ? resolveStageSeamTarget({
             ...seamInputFor(layer, { level: seamLevel, panelFor, filterOpen: isFilterOpen && owned, searchOpen: isSearchOpen }),
-            viewportWidth: view?.width ?? 0,
+            viewportWidth: screenWidth,
         }, accountVariant)
         : { width: 0, variant: 'none' as const };
     // 交接时缝合上：只把开口目标换成 0，内容不换（缝里画的仍是这一层，开口补间让它随宽度淡出 / 淡入）。
@@ -200,7 +207,7 @@ const BravaisStage: React.FC<LibrarySuiteStageProps> = ({
         renderFrame,
         layer,
         target: seamTarget,
-        viewportWidth: view?.width ?? 0,
+        viewportWidth: screenWidth,
         contentRef: seamContentRef,
         reducedMotion,
         reducedTransitions,
@@ -221,7 +228,7 @@ const BravaisStage: React.FC<LibrarySuiteStageProps> = ({
     useLayoutEffect(() => {
         if (!view) return;
         frameRef.current.view = view;
-        useBravaisSeamStore.getState().syncViewport(view.width);
+        useBravaisSeamStore.getState().syncViewport(screenWidth);
         camera.moveTo(frameRef.current.center, true);
     }, [camera.moveTo, frameRef, view]);
 
