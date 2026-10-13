@@ -54,6 +54,32 @@
 - 不要把"工具返回成功"说成"任务完成"
 - 实测过 / 没验证过，要分清楚说
 
+### 🔴 每次编译成功就 commit，不用每次问
+
+2026-10-13 他明确授权的节奏：
+
+- **每次构建/编译跑通就立刻提一个 commit**，APK / web / desktop 任一出包都算。
+- 不需要每次停下来征求同意（他明确否掉了"只在完整功能落地时提"的选项）。
+- 仍然**不要自动 push** —— 只在他明确要求时推，且遵守 feature-branch 规则。
+- **只提本次改动**，不夹带无关文件。
+- commit message 要写清三件事：**为什么这么选 / 实测数据 / 已知未做项**。
+  他会当文档看，别只写一句 "fix stuff"。
+
+---
+
+## Git 身份与提交约定
+
+| 项 | 值 |
+| --- | --- |
+| 提交身份 | **雪冷水 `<shimoray@163.com>`** |
+| 配置范围 | **仓库本地**（`git config --local`），全局配置保持为空，不影响他其他项目 |
+| 工作流 | feature-branch，从 `main` 开分支 |
+| 推送 | **只推自己的分支**，🚫 绝不 `git push origin main` |
+| 合并时机 | **由他决定**，不要替他合 |
+
+⚠️ 2026-10-13 之前本仓库没有配 git 身份，第一次 commit 会报
+`Author identity unknown`。已在 `Android` 分支上配好本地身份。
+
 ---
 
 ## 文件组织偏好
@@ -67,13 +93,18 @@
 
 ---
 
-## 当前关注（2026-10-13 快照）
+## 当前关注（2026-10-13 快照，已含当日进展）
 
-1. **Folia 二次开发** —— 主线。已装 v0.7.18 试用，仓库已 clone 到
-   `C:\Users\wodes\XLS\Pro\DevPro\folia-major`，扩展面见 `docs/dev/AGENTS.md`
-2. **手机端** —— 问过有没有 Android 版。结论：官方没有 APK，走 Web+PWA 或自己用
-   Capacitor 打。他倾向轻量路线
-3. **二开路线选型** —— 尚未决定：Folium 模组 vs fork 主仓。**等他表态再推进**
+1. **Folia 安卓版** —— 主线，已从「问有没有」变成「已产出 APK」。
+   `Android` 分支 + Capacitor 8.5.3，**14.41MB 可安装 APK**
+   （minSdk 24 / targetSdk 36），归档 `C:\Users\wodes\XLS\APP\Folia-Android\`。
+   **下一步：插手机 USB 调试实测**（他人在电脑旁时做），重点看 edge-to-edge 实际观感、
+   WebGL 歌词动画帧率与发热、锁屏是否断播（预期会断）。
+   方案与全部踩坑见 [`docs/dev/ANDROID.md`](ANDROID.md)。
+2. **后台播放** —— 安卓版最大缺口。项目用 Web MediaSession，**WebView 里不生效**
+   ⇒ 锁屏断播、耳机按键无响应。要写原生 Media3/ExoPlayer + `MediaSessionService`。
+3. **音源后端** —— 酷狗/QQ/网易云是 Node 服务，WebView 跑不了，得部署到服务器，
+   App 用 `VITE_*_API_BASE` 指过去。他有 natfrp 内网穿透经验，可以自建。
 
 ---
 
@@ -85,8 +116,9 @@
 | 桌面端 | Windows 11，per-user 安装习惯，免 UAC |
 | 内网机器 | `192.168.0.109`，可用 SSH（`notebook-ssh` skill） |
 | 视频管线 | ffmpeg + numpy 逐帧后期（他自建，见 agent memory） |
-| 包管理 | npm / pnpm，Node 20+ |
-| Git | feature-branch 工作流，**只推自己的分支** |
+| 包管理 | npm / pnpm，Node 20+（实际 v24.15.0） |
+| Git | feature-branch 工作流，**只推自己的分支**；仓库本地身份 `雪冷水 <shimoray@163.com>` |
+| 安卓构建 | Capacitor **8.5.3**，Node 22+ / JDK 21 / AGP 8.13 / Gradle 8.14.3 / SDK 36.1<br>一键脚本：`docs\dev\android-build.ps1` |
 
 ---
 
@@ -99,7 +131,12 @@
 - 滑杆默认 1.0 = 原版，不动看不出变化 —— 装的模组"没效果"基本都是这个原因
 - 要做自己的视觉主题，优先看 `src/mods/folium/registries/visualizers.tsx`，
   能注册**完整新模式**，不用 fork
-- 磁盘只剩 49.8 GB（`.minimax/sessions` 一个目录就 42.5 GB），跑 `npm ci` 前先清
+- 磁盘 2026-10-13 实测剩 **83.3 GB**（`.minimax/sessions` 一个目录就 42.5 GB），
+  但它会波动，**规划容量前现场重测**别用旧数字
+- `npm ci` 必须带 `ELECTRON_SKIP_BINARY_DOWNLOAD=1`，否则卡死在 electron 二进制下载
+  （安卓构建根本不需要那个二进制）
+- 安卓构建的 JDK 陷阱：命令行 `java` 是 **17**，Capacitor 8 要 **21**，
+  须把 `JAVA_HOME` 指向 `C:\Program Files\Android\Android Studio\jbr`
 
 ---
 
