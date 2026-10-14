@@ -8,6 +8,118 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-14-netease-suite` — 新增第四套 library suite：网易云手机版布局
+
+**性质**：新功能（新增一套 suite，原三套零改动）。commit `b1b65d7a`。
+**结论：达成，已真机验证（一加 Ace 3 / Android 16 / 视口 361×794）。**
+
+#### 动机
+
+用户反馈：「界面全部都是为 PC 专门设计的，在手机上用起来就像用 Windows 系统一样别扭。」
+
+上一轮已确认**布局层上游其实适配得不错**（768px 分界线、Carousel3D 双套布局、
+Bravais 那一整套窄缝布局），真 bug 是 `BravaisStage.tsx` 把世界宽度当视口宽度用（已修）。
+
+所以这次的问题不在布局，在**交互模型**：bravais 的「一整面墙 + 缝」是桌面空间的思路——
+悬停显形、键盘翻牌、鼠标横扫。手机竖屏上这套隐喻无处施力。
+网易云手机版反过来：一切都摊平成一列可纵向滚动的列表，靠底部标签栏切换、靠常显的「⋯」拿操作。
+
+#### 为什么走 suite 扩展点而不是改宿主组件
+
+`src/library/registry.ts:21` 用 `import.meta.glob('./suites/*/entry.ts', { eager: true })`
+自动发现，现有 `grid`（默认）/ `bravais` / `tui`（开发专用）三套并列。
+加第四套只需新建目录 + 填 `surfaces`，**原三套一行不改**，设置里可一键切回。
+
+这是上游留的正规扩展点，也是作者明示的做法
+（`docs/library-suites.md`：「选中 suite 没实现就回退默认 suite」）。
+
+#### 覆盖范围（用户选定的方案 A）
+
+| surface | 文件 | 做了什么 |
+| --- | --- | --- |
+| home | `NeteaseHome.tsx` | 常驻搜索条 + 横向歌单大卡网格 + 底部四标签栏（在线/本地/专辑/远程） |
+| collection | `NeteaseCollection.tsx` | 大封面头 + 播放按钮 + 操作条 + 歌曲列表（序号/标题/时长/常显⋯）+ 简介折叠 |
+| artist | `NeteaseArtist.tsx` | 圆形艺人头像 + 热门歌曲列表 + 专辑网格 + 专辑续页 |
+| account | `NeteaseAccount.tsx` | 扫码登录卡（二维码/状态行/冷却/重试/诊断）+ 切平台确认卡，走 `account` controller |
+
+**未动**：底部播放条、队列面板、设置弹窗、命令面板、歌词播放页
+（歌词页是用户明确要求保留的；前四项属宿主组件，风险与回滚成本另算，见下）。
+
+#### 🔑 配色不写死（用户明确要求）
+
+> 「folia 软件本身就有多种不同的配色（根据音乐或 AI 生成的两套配色：浅色、暗色），
+> 所以别弄成固定的暗色电影感配色。」
+
+Folia 的主题是 `DualTheme`（light + dark 一对），来源有三条：内置预设 / 按音乐生成 / AI 生成。
+组件里写 `bg-white`、`#ff2e2e` 这种硬编码，用户切到暗色主题时这套 UI 会变成一块白斑。
+
+做法：整套颜色只从 `src/library/suites/netease/neteaseTheme.ts` 出——
+从 `theme.primaryColor / secondaryColor / accentColor / backgroundColor` 推出一整套
+CSS 变量（`--nt-*`），组件里只引用变量名。分隔线、浮层、按下态这些 Theme 没直接给的，
+从上几个颜色按透明度推导，保证任何主题下明暗关系一致。
+
+**真机实测（CDP 读 computed style）**：
+
+| 变量 | 浅色主题 | 暗色主题 |
+| --- | --- | --- |
+| `--nt-bg` | `#f5f5f4` | `#09090b` |
+| `--nt-text` | `#1c1917` | `#f4f4f5` |
+| `--nt-accent` | `#ea580c` | `#f4f4f5` |
+| `--nt-elevated` | `#ffffff` | `rgba(255,255,255,0.08)` |
+| `--nt-divider` | `rgba(0,0,0,0.08)` | `rgba(255,255,255,0.10)` |
+| `--nt-on-accent` | `#ffffff` | `#09090b`（自动反色） |
+
+`onAccent` 按 accent 亮度自动选深/浅字，对比度在任何主题下都保得住。
+
+**故意保留的 4 处硬编码**（grep 复核过，只剩这些）：危险红 `#e5484d` ×2（语义色不该跟主题走）、
+二维码白底 `#ffffff`（扫码必需）、封面角标白字+黑投影（压在任意颜色封面上，必须中性色）。
+
+#### 顺带治掉的 `group-hover` 隐身问题
+
+上一轮定位的「悬停才显形、触屏上永久隐身」高发区，在本 suite 里**全部改为常显**。
+真机实测：11 张歌单卡的 `aria-label="更多操作"` 按钮，**11 个全部可见**
+（`opacity !== '0'` 且 `display !== 'none'`）。
+
+#### 验收数据
+
+- `tsc --noEmit`：**0 error**
+- `test/unit/library`：**1000/1000 passed**（94 文件）
+- `vite build`：`✓ built in 4.80s`，五个独立 chunk
+  （NeteaseHome 6.42 kB / Collection 6.00 / Artist 4.60 / Account 5.63 / 共用 parts 7.81，
+  gzip 后各 1.8–2.8 kB）—— lazy 分包正确，没选 netease 的用户不加载它的任何代码
+- APK **15.6 MB**，`adb install -r` 成功，真机渲染出 11 张歌单卡 + 四标签栏
+
+#### 踩到的坑
+
+1. ⛔ **7 个既有测试失败**：它们把 suite 清单硬编码成 `['grid','bravais','tui']`。
+   加 suite 就得更新断言——但它们保护的**行为**（grid 仍是默认、未知 id 回退、
+   首启引导只列 grid+bravais）全部未变，只改了清单。
+   涉及 `registry.test.ts` / `tuiAvailability.test.ts` / `librarySuiteChoice.test.ts`。
+2. ⛔ **`localStorage` 存的是裸字符串**：`library_suite` 的值是 `netease`，
+   **不是** `"netease"`（JSON 字符串）。写成 JSON 会静默回退到 grid，
+   表现为「改了没生效」——排查时先读回这个值。
+3. ⛔ **PowerShell 的 `Set-Location` 在同一条命令里对 `[IO.File]` 无效**：
+   `cd X; [IO.File]::ReadAllText('a.tsx')` 仍按**原始工作目录**解析相对路径。
+   用 `$dir = '<绝对路径>'; Join-Path $dir $f`。
+   副作用：那次失败在仓库根目录留下 4 个 0 字节的 `Netease*.tsx` 空文件，已清。
+4. ⚠️ **WebView 有 Service Worker**：改了代码重新装机，设备上可能仍跑旧 chunk
+   （老生常谈的坑）。判定：把 `document.querySelectorAll('script[src]')` 的文件名
+   和本地 `dist/assets/` 对一遍，对不上就是 SW 在发旧包。
+   本轮处理：`getRegistrations()` 全 unregister + `caches.keys()` 全 delete 再 reload。
+
+#### 已知未做
+
+- **界面上文案暂为中文硬编码**，未接 i18n（只有 `suiteName` 三份 locale 已接，
+  否则切换浮层显示不出名字）。换语言时这套 UI 不跟着变。
+- 收藏 / 创建歌单 / 目录树批量操作暂未接（对应动作未在 `entry.ts` 声明，
+  命令面板里不会出现这些命令）。
+- 底部播放条 / 队列面板 / 设置弹窗 / 命令面板仍是宿主组件，未做网易云化。
+  这四项属主干（`App.tsx` 2700+ 行枢纽），且与歌词页耦合，改动风险与回滚成本
+  远高于建 suite。建议等这套布局验证过方向再单独排。
+- **后台播放仍未做**（第一优先级，见 `USER.md`），本轮未触碰。
+
+---
+
 ### `dev-2026-10-14-fullscreen-padding` — 真全屏：`insetsHandling` 从 `css` 改成 `disable`
 
 **性质**：BUG fix（一行配置 + 注释重写）。上/左/下三侧白带消失。

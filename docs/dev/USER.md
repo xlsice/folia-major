@@ -96,10 +96,19 @@
 ## 当前关注（2026-10-13 深夜快照：能播了 + 沉浸式已做）
 
 1. **Folia 安卓版** —— 主线，已装在他的一加 Ace 3 上实测。
-   `Android` 分支，Capacitor 8.5.3，**15.6MB APK**（minSdk 24 / targetSdk 36）。
+   `Android` 分支，Capacitor 8.5.3，APK **15.6 MB**（minSdk 24 / targetSdk 36）。
    **已达成**：沉浸式全屏（状态栏 + 手势导航条隐藏）、窄屏缝宽度 bug 修复、
-   **网易云扫码登录可用（二维码真的渲染出来了）**。
-   归档 `C:\Users\wodes\XLS\APP\Folia-Android\Folia-Android-debug-0.7.18.apk`。
+   **网易云扫码登录可用（二维码真的渲染出来了）**、
+   **新增第四套 library suite「netease」= 手机版网易云布局，已真机验证**。
+   归档 `C:\Users\wodes\AppData\Local\Folia-Android\` 旁的
+   `C:\Users\wodes\XLS\APP\Folia-Android\Folia-Android-debug-0.7.18.apk`。
+2. **⚠️ 切库内界面不用重装**：设置 → 选项 → 「播放进入视图」下面选**网易云布局**，
+   或 **Ctrl+K** → 搜「资料库界面」。切的是 localStorage `library_suite`，
+   存的是**裸字符串** `netease`（不是 JSON `"netease"`），写错会静默回退到网格。
+3. **网易云布局套装的配色跟着主题走**：从 `theme` 推 `--nt-*` 变量，
+   组件里不写死色值（用户明确要求：别弄成固定配色）。
+   真机实测浅色/暗色两套变量全部正确，`onAccent` 会自动反色保对比度。
+   改动它时**别在组件里加硬编码色**，加到 `src/library/suites/netease/neteaseTheme.ts`。
 2. **⚠️ 用之前必须先起音源服务**（这是当前方案最大的使用门槛）：
    `powershell -ExecutionPolicy Bypass -File docs\dev\ncm-api.ps1`
    —— 电脑不开机就播不了网易云。`-Status` 看状态，`-Stop` 停。
