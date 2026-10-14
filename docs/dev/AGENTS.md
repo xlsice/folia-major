@@ -284,6 +284,19 @@ core 是 8.5.3，peer 是 `>=8.0.0`。看到不一致不用慌，这是官方 di
 **探针变量名要按用途分前缀**（`__bk` / `__probeXxx`），并且每次都把计数暴露出来，
 不要依赖别的脚本是否装过。
 
+### ⛔ 跑过 web 构建后，别拿 `-SkipWebBuild` 直接打包 APK
+
+`docs/dev/android-build.ps1` 的默认流程是 `vite build`（带 `VITE_ANDROID_BUILD=1`）
+→ `cap sync` → gradle，这套是自洽的。但它还有个 `-SkipWebBuild` 参数。
+
+如果你**先跑了 web 模式的构建**（`npx vite build` / `npm run build`，
+不带 `VITE_ANDROID_BUILD`），`dist/` 就变成了网页版；此时再用 `-SkipWebBuild`，
+`cap sync` 会把**网页版**打进 APK —— 构建不报错、APK 也能装，
+但 WebView 里跑的是没适配移动端的那个包，极难第一时间联想到。
+
+排查「安卓版行为像网页版」时，第一件事就是确认 `dist/assets/main-*.js`
+的 hash 和 APK 里的对得上、以及它是不是本次 android 构建产出的那一份。
+
 ### ⛔ 切换可视化模式只有一条路：Ctrl+K 命令面板
 
 设置页里**没有**模式切换列表。别在设置里翻。路径是：
