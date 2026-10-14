@@ -248,7 +248,10 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
                     />
                 )}
                 {snapshot?.status === 'ready' && tracks.length === 0 && (
-                    <NeteaseEmpty message="这里还没有歌曲" hint="切换来源或导入本地曲库" />
+                    <NeteaseEmpty
+                        message="这里还没有歌曲"
+                        hint="在线音源没响应，或这个歌单确实没有可播放的曲目"
+                    />
                 )}
                 {tracks.length > 0 && (
                     <div className="pb-2">

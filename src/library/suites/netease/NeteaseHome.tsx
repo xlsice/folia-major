@@ -1,5 +1,6 @@
 import React from 'react';
-import { Compass, FolderOpen, ListMusic, Radio, RefreshCw, Plus, HardDrive, Library as LibraryIcon, Server } from 'lucide-react';
+import { Compass, FolderOpen, ListMusic, Radio, RefreshCw, Plus, HardDrive, Library as LibraryIcon, Server, User } from 'lucide-react';
+import { useSyncExternalStore } from 'react';
 import type { LibraryHomeSurfaceProps } from '../../core/contracts/suite';
 import type { ProviderCollection } from '../../../types/onlineMusic';
 import { buildNeteasePalette, placeholderTint } from './neteaseTheme';
@@ -22,13 +23,19 @@ import {
 // 这里是一列可纵向滚动的列表，卡片是方图，切换靠底部标签栏。两套共用同一份契约数据，
 // 换 suite 只换画法，不换数据源。
 
-type HomeTabId = 'playlist' | 'local' | 'albums' | 'navidrome';
+// 首页五个标签，对齐网易云手机版的信息架构：
+//   推荐（默认）：来自网易云「现在音乐」的推荐歌单墙 + 每日推荐入口
+//   本地 / 专辑 / 远程：曲库来源
+//   我的：登录用户自己的歌单（收藏、创建、云盘）
+// 「我的」必须排在最后 —— 网易云就是这个顺序，推荐在前、我的在末屏。
+type HomeTabId = 'discover' | 'local' | 'albums' | 'navidrome' | 'mine';
 
 const TAB_LABELS: Record<HomeTabId, string> = {
-    playlist: '在线',
+    discover: '推荐',
     local: '本地',
     albums: '专辑',
     navidrome: '远程',
+    mine: '我的',
 };
 
 const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
@@ -48,14 +55,39 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
     onStatusMessage,
     onTogglePlayback,
     onEnterPlaybackView,
+    homeResources,
     localMusicState,
     setLocalMusicState,
 }) => {
     const insets = useSafeInsets();
     const barInset = bottomBarPadding(insets);
     const can = new Set(declaredActions.actions);
-    const [tab, setTab] = React.useState<HomeTabId>('playlist');
+    const [tab, setTab] = React.useState<HomeTabId>('discover');
     const [query, setQuery] = React.useState('');
+
+    const needle = query.trim().toLowerCase();
+    const matchName = (name?: string | null) => !needle || (name ?? '').toLowerCase().includes(needle);
+
+    // 「推荐」页的数据：core 的 radioFeed 资源（宿主持有、切 suite 不重建）。
+    // 进推荐页时 ensure 一次，首页离开后归属会被宿主作废，所以每次进都要 ensure。
+    const radioFeed = homeResources?.radioFeed;
+    const radioSnapshot = useSyncExternalStore(
+        React.useCallback(listener => radioFeed?.subscribe(listener) ?? (() => {}), [radioFeed]),
+        React.useCallback(() => radioFeed?.getSnapshot() ?? null, [radioFeed]),
+    );
+    React.useEffect(() => {
+        if (tab === 'discover') void radioFeed?.ensure();
+    }, [tab, radioFeed]);
+
+    const recommended = React.useMemo(() => {
+        const source = radioSnapshot?.data?.recommended ?? [];
+        return source.filter(item => matchName(item.name));
+        // matchName 依赖 needle，needle 已进依赖表。
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [radioSnapshot, needle]);
+
+    const dailyCount = radioSnapshot?.data?.dailyCount ?? 0;
+    const dailyCover = radioSnapshot?.data?.dailyCoverUrl;
 
     // 首页数据里没有 theme / isDaylight 的显式 prop 时，从契约的 theme 推；
     // isDaylight 由宿主的 ThemeSettingsStore 决定，这里用背景亮度反推，保证与全局一致。
@@ -70,14 +102,18 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
 
     const palette = React.useMemo(() => buildNeteasePalette(theme, isDaylight), [theme, isDaylight]);
 
-    const needle = query.trim().toLowerCase();
-    const matchName = (name?: string | null) => !needle || (name ?? '').toLowerCase().includes(needle);
-
-    // 搜索词提交给宿主的浏览会话（命令面板 / grid 那一侧读它），
-    // 本地同时做一遍即时过滤，两边都不阻塞。
+    // 过滤词提交给宿主的浏览会话（命令面板 / grid 那一侧读它），本地同时过滤一遍，两边都不阻塞。
+    // 注意 sourceTab 用的是宿主 HomeViewTab 的名字，与本 suite 自己的 tab id 不是一套，要映射。
+    const HOME_VIEW_TAB: Record<HomeTabId, Parameters<typeof onSearchCommitted>[1]> = {
+        discover: 'playlist',
+        local: 'local',
+        albums: 'albums',
+        navidrome: 'navidrome',
+        mine: 'playlist',
+    };
     const applyQuery = (next: string) => {
         setQuery(next);
-        onSearchCommitted(next, tab);
+        onSearchCommitted(next, HOME_VIEW_TAB[tab]);
     };
 
     const onlineCollections = React.useMemo(
@@ -151,21 +187,134 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
         </button>
     );
 
-    const renderPlaylistTab = () => {
+    /**
+     * 推荐页（网易云第一屏）：每日推荐两个大入口 + 推荐歌单瀑布墙。
+     * 数据来自 core 的 radioFeed（omni.getHomeFeed），不是自己拉的。
+     */
+    const renderDiscoverTab = () => {
+        const feedStatus = radioSnapshot?.status;
+        const hasFeed = recommended.length > 0 || dailyCount > 0;
+
+        return (
+            <>
+                {/* 每日推荐 / 私人 FM：两个方块，网易云并排放在推荐墙最上面 */}
+                {(dailyCount > 0 || dailyCover) && (
+                    <div className="grid grid-cols-2 gap-3 px-4 pt-1">
+                        <button
+                            type="button"
+                            className="flex flex-col items-center gap-2 rounded-xl py-4"
+                            style={{ background: 'var(--nt-surface)' }}
+                        >
+                            <span
+                                className="h-16 w-16 overflow-hidden rounded-lg"
+                                style={placeholderTint('daily-recommendations', isDaylight)}
+                            >
+                                {dailyCover ? (
+                                    <img src={dailyCover} alt="" className="h-full w-full object-cover" />
+                                ) : (
+                                    <span className="flex h-full w-full items-center justify-center text-[10px] font-semibold" style={{ color: 'var(--nt-text)' }}>
+                                        每日<br />推荐
+                                    </span>
+                                )}
+                            </span>
+                            <span className="text-xs font-medium" style={{ color: 'var(--nt-text)' }}>
+                                每日推荐
+                            </span>
+                            {dailyCount > 0 && (
+                                <span className="text-[10px]" style={{ color: 'var(--nt-text-faint)' }}>{dailyCount} 首</span>
+                            )}
+                        </button>
+                        <button
+                            type="button"
+                            className="flex flex-col items-center gap-2 rounded-xl py-4"
+                            style={{ background: 'var(--nt-surface)' }}
+                        >
+                            <span
+                                className="h-16 w-16 overflow-hidden rounded-full"
+                                style={placeholderTint('personal-fm', isDaylight)}
+                            >
+                                {radioSnapshot?.data?.personalFmCoverUrl ? (
+                                    <img src={radioSnapshot.data.personalFmCoverUrl} alt="" className="h-full w-full object-cover" />
+                                ) : (
+                                    <span className="flex h-full w-full items-center justify-center">
+                                        <Radio size={22} style={{ color: 'var(--nt-text)' }} />
+                                    </span>
+                                )}
+                            </span>
+                            <span className="text-xs font-medium" style={{ color: 'var(--nt-text)' }}>私人 FM</span>
+                        </button>
+                    </div>
+                )}
+
+                <NeteaseSectionTitle count={recommended.length}>推荐歌单</NeteaseSectionTitle>
+
+                {feedStatus === 'loading' && !hasFeed && <NeteaseEmpty message="推荐加载中…" />}
+
+                {/* 推荐走的是在线音源。取不到时要说清是「音源」不通，
+                    否则用户会误以为是自己网络或界面坏了 —— 实测踩过：
+                    接口 Failed to fetch 时笼统显示「加载失败」，很难定位。 */}
+                {feedStatus === 'error' && !hasFeed && (
+                    <NeteaseEmpty
+                        message="推荐加载失败"
+                        hint="在线音源没有响应 —— 检查音源服务是否在运行"
+                    />
+                )}
+
+                {/* 没登录时网易云也照样给推荐（游客态），所以这里不因缺 user 而空。
+                    feedStatus 停在 idle 且一直没有数据 = 音源根本没读到，
+                    这时要区分「真的一条推荐都没有」和「压根没读到」。 */}
+                {hasFeed ? (
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-4 px-4 sm:grid-cols-3">
+                        {recommended.map(collection => (
+                            <CollectionCard key={String(collection.id)} collection={collection} />
+                        ))}
+                    </div>
+                ) : feedStatus === 'ready' ? (
+                    <NeteaseEmpty
+                        message={needle ? '没有匹配的歌单' : '暂无推荐'}
+                        hint={user ? '下拉刷新试试' : '登录后推荐更准'}
+                    />
+                ) : null}
+            </>
+        );
+    };
+
+    /** 我的页（最后一屏）：登录用户自己的歌单 + 收藏 + 云盘。 */
+    const renderMineTab = () => {
         if (!user) {
             return (
                 <NeteaseEmpty
                     message="未登录"
-                    hint="在「我的」标签页登录后，这里会显示你的歌单"
+                    hint="登录网易云后这里会显示你的歌单"
                 />
             );
         }
         if (onlineCollections.length === 0) {
-            return <NeteaseEmpty message={needle ? '没有匹配的歌单' : '还没有歌单'} hint="去「我的」页导入或创建" />;
+            return <NeteaseEmpty message={needle ? '没有匹配的歌单' : '还没有歌单'} hint="新建一个开始整理吧" />;
         }
         return (
             <>
-                <NeteaseSectionTitle count={onlineCollections.length}>我的歌单</NeteaseSectionTitle>
+                {/* 账号条 */}
+                <div className="flex items-center gap-3 px-4 py-4">
+                    <span
+                        className="h-14 w-14 shrink-0 overflow-hidden rounded-full"
+                        style={placeholderTint(user.nickname || 'me', isDaylight)}
+                    >
+                        {user.avatarUrl ? (
+                            <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
+                        ) : null}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                        <div className="truncate text-base font-semibold" style={{ color: 'var(--nt-text)' }}>
+                            {user.nickname}
+                        </div>
+                        <div className="text-xs" style={{ color: 'var(--nt-text-faint)' }}>
+                            {onlineCollections.length} 个歌单
+                        </div>
+                    </div>
+                </div>
+
+                <NeteaseSectionTitle count={onlineCollections.length}>我创建的歌单</NeteaseSectionTitle>
                 <div className="grid grid-cols-2 gap-x-3 gap-y-4 px-4 sm:grid-cols-3">
                     {onlineCollections.map(collection => (
                         <CollectionCard key={String(collection.id)} collection={collection} />
@@ -265,12 +414,13 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
         </>
     );
 
-    // 图标照网易云：首页是房子形状的「发现」，标签在文字下方
+    // 顺序同网易云：推荐在第一屏，「我的」在最后一屏
     const tabs: readonly { id: string; label: string; icon: React.ReactNode }[] = [
-        { id: 'playlist', label: TAB_LABELS.playlist, icon: <Compass size={19} /> },
+        { id: 'discover', label: TAB_LABELS.discover, icon: <Compass size={19} /> },
         { id: 'local', label: TAB_LABELS.local, icon: <HardDrive size={18} /> },
         { id: 'albums', label: TAB_LABELS.albums, icon: <LibraryIcon size={18} /> },
         { id: 'navidrome', label: TAB_LABELS.navidrome, icon: <Server size={18} /> },
+        { id: 'mine', label: TAB_LABELS.mine, icon: <User size={18} /> },
     ];
 
     return (
@@ -282,7 +432,7 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                         label="更多"
                         actions={[
                             { id: 'refresh', label: '刷新', onSelect: () => void onRefreshLocalSongs() },
-                            { id: 'account', label: '账户', onSelect: () => setTab('playlist') },
+                            { id: 'account', label: '账户', onSelect: () => setTab('mine') },
                         ]}
                     />
                 )}
@@ -290,10 +440,11 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
             <NeteaseSearchBar query={query} placeholder="搜索歌单" onQueryChange={applyQuery} />
 
             <div className="nt-scroll min-h-0 flex-1 pb-4">
-                {tab === 'playlist' && renderPlaylistTab()}
+                {tab === 'discover' && renderDiscoverTab()}
                 {tab === 'local' && renderLocalTab()}
                 {tab === 'albums' && renderAlbumsTab()}
                 {tab === 'navidrome' && renderRemoteTab()}
+                {tab === 'mine' && renderMineTab()}
             </div>
 
             {/* 迷你播放条：贴着 tab 栏上方。整条可点进播放页（网易云同款交互）。 */}
