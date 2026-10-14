@@ -1,6 +1,9 @@
 
 
 export default {
+  "libraryNetease": {
+    "suiteName": "Tata letak NetEase"
+  },
   "libraryBravais": {
     "suiteName": "Dinding Bravais",
     "homeTitle": "Pustaka",

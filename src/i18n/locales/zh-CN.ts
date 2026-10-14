@@ -1,6 +1,9 @@
 
 
 export default {
+  "libraryNetease": {
+    "suiteName": "网易云布局"
+  },
   "libraryBravais": {
     "suiteName": "Bravais 墙面",
     "homeTitle": "书库",

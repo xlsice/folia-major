@@ -1,6 +1,9 @@
 
 
 export default {
+  "libraryNetease": {
+    "suiteName": "Netease layout"
+  },
   "libraryBravais": {
     "suiteName": "Bravais wall",
     "homeTitle": "Library",

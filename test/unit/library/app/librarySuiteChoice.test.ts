@@ -67,6 +67,7 @@ describe('effective library suite', () => {
         expect(listLibrarySuiteOptions()).toEqual([
             { id: 'grid', labelKey: 'libraryTui.rendererGrid' },
             { id: 'bravais', labelKey: 'libraryBravais.suiteName' },
+            { id: 'netease', labelKey: 'libraryNetease.suiteName' },
             { id: 'tui', labelKey: 'libraryTui.rendererTui' },
         ]);
         expect(listLibrarySuiteOptions()).toBe(listLibrarySuiteOptions());
@@ -159,9 +160,13 @@ describe('whether there is a choice', () => {
         it('offers none', async () => {
             vi.resetModules();
             vi.stubEnv('VITE_LIBRARY_TUI', 'false');
-            // B6 起 bravais 总在 registry 里：用替身把它标成不可用，复现「只有 grid」的构建。
+            // B6 起 bravais 总在 registry 里，二开的 netease 同理：用替身把它们标成不可用，复现「只有 grid」的构建。
             vi.doMock('@/library/suites/bravais/entry', async importOriginal => {
                 const actual = await importOriginal<typeof import('@/library/suites/bravais/entry')>();
+                return { ...actual, default: { ...actual.default, available: false } };
+            });
+            vi.doMock('@/library/suites/netease/entry', async importOriginal => {
+                const actual = await importOriginal<typeof import('@/library/suites/netease/entry')>();
                 return { ...actual, default: { ...actual.default, available: false } };
             });
             const registry = await import('@/library/registry');

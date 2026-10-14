@@ -24,9 +24,9 @@ import type { LibrarySuiteManifest } from '@/library/core/contracts/suite';
 // 启用 VITE_LIBRARY_TUI=true，所以开发验证 TUI 也在。纯规则的边界情况在 core/librarySuites.test.ts。
 
 describe('library suite registry', () => {
-    it('discovers the grid (default, first), bravais and the dev-only TUI', () => {
-        // B6 起 bravais 进 registry（正式 suite，不门控）。
-        expect(listLibrarySuites().map(suite => suite.id)).toEqual(['grid', 'bravais', 'tui']);
+    it('discovers the grid (default, first), bravais, netease and the dev-only TUI', () => {
+        // B6 起 bravais 进 registry（正式 suite，不门控）。netease 是二开加的第四套（手机版网易云布局，不门控）。
+        expect(listLibrarySuites().map(suite => suite.id)).toEqual(['grid', 'bravais', 'netease', 'tui']);
         expect(DEFAULT_LIBRARY_SUITE_ID).toBe('grid');
         expect(hasLibrarySuite('tui')).toBe(true);
         expect(hasLibrarySuite('renderer')).toBe(false);
