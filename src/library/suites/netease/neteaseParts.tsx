@@ -7,6 +7,7 @@ import React from 'react';
 import { useState } from 'react';
 import { ChevronDown, Disc3, ListMusic, MoreHorizontal, Pause, Play, Search, X } from 'lucide-react';
 import { paletteToCssVars, placeholderTint, type NeteasePalette } from './neteaseTheme';
+import { useSafeInsets } from './useSafeInsets';
 
 /**
  * 底部标签栏。几何照网易云手机版的真机实测（uiautomator dump，单位 dp）：
@@ -414,16 +415,31 @@ export const NeteaseShell: React.FC<{
     /** 传 'collection' / 'artist' 表示这是叠在首页之上的层；首页不传。 */
     surface?: 'collection' | 'artist';
     children: React.ReactNode;
-}> = ({ palette, surface, children }) => (
-    <div
-        className={surface ? 'fixed inset-0 z-[110] flex flex-col overflow-hidden' : 'flex h-full min-h-0 flex-col'}
-        style={{ background: 'var(--nt-bg)', color: 'var(--nt-text)', ...paletteToCssVars(palette) }}
-        data-netease-root="true"
-        // 转场测量与 dev 的 renderer 切换按这两个属性定位当前层（见 morphGeometry 的说明）。
-        data-library-renderer={surface ? 'netease' : undefined}
-        data-library-surface={surface}
-    >
-        <style>{NETEASE_STYLES}</style>
-        {children}
-    </div>
-);
+}> = ({ palette, surface, children }) => {
+    const insets = useSafeInsets();
+    return (
+        <div
+            className={surface ? 'fixed inset-0 z-[110] flex flex-col overflow-hidden' : 'flex h-full min-h-0 flex-col'}
+            style={{
+                background: 'var(--nt-bg)',
+                color: 'var(--nt-text)',
+                // 状态栏避让。immersive 全屏（insetsHandling: 'disable'）下内容会铺到状态栏底下，
+                // 而本套件所有页面顶部都是「52px 标题栏顶到 y=0」的写法，没有一处留状态栏高度 ——
+                // 真机实测（2026-10-15 一加 Ace 3 / PJE110）header top:0、标题 h1 top:14~38，
+                // 而 env(safe-area-inset-top)=40：标题整个埋在状态栏里。
+                // 垫在最外层而不是各页 header 里：底色照样铺满状态栏区域（视觉上是导航栏延伸上去），
+                // 只有内容下移；四个 surface 一次全修，改一处不会漏。
+                // 底部不归这里管：底栏/迷你条的避让是各页自己用 bottomBarPadding(insets) 内联施加的。
+                paddingTop: insets.top,
+                ...paletteToCssVars(palette),
+            }}
+            data-netease-root="true"
+            // 转场测量与 dev 的 renderer 切换按这两个属性定位当前层（见 morphGeometry 的说明）。
+            data-library-renderer={surface ? 'netease' : undefined}
+            data-library-surface={surface}
+        >
+            <style>{NETEASE_STYLES}</style>
+            {children}
+        </div>
+    );
+};

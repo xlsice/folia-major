@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 // src/library/suites/netease/useSafeInsets.ts
-// 底部安全区。**不要用 env(safe-area-inset-*)**——它在这台机器上恒为 0（见下）。
+// 安全区（顶部 / 底部 / 左右）。**不要用 env(safe-area-inset-*)**——它在这台机器上大部分恒为 0（见下）。
 //
 // 背景（2026-10-14 真机实测）：capacitor.config.ts 的 SystemBars.insetsHandling = 'disable'
 // 是为了真全屏（本机 WebView 138.x < Capacitor 判定修复的 140，用 'css' 会给 decorView
@@ -12,9 +12,13 @@ import { useEffect, useState } from 'react';
 // 也就是底部 tab 需要的 16dp 避让拿不到 → 系统手势条压在「在线/本地/专辑/远程」上，
 // 点标签其实点在手势条。
 //
+// 顶部同理不能省：沉浸式下页面内容铺到状态栏底下，套件里每个页面顶栏都是 y=0 起排，
+// 标题会整个埋进 40px 的状态栏（2026-10-15 实测 h1 top:14~38 vs inset 40）。
+// NeteaseShell 在最外层垫 insets.top，四个 surface 一次全修。
+//
 // 解法：SafeInsetsPlugin.java 用 WindowInsetsCompat 读真实值，注入成 --nt-inset-* CSS 变量，
 // 这个 hook 只负责读它。没有原生插件时（web / 桌面）回落到 env()，此时取 0 也安全，
-// 因为桌面没有系统手势条。
+// 因为桌面没有系统手势条 / 状态栏。
 
 export type SafeInsets = {
     left: number;
