@@ -396,15 +396,32 @@ export const NETEASE_STYLES = `
 .nt-scroll { scrollbar-width: none; }
 `;
 
-/** 铺一层「页面底色 + 全套配色变量」的外壳，四个 surface 共用。 */
+/**
+ * 铺一层「页面底色 + 全套配色变量」的外壳，四个 surface 共用。
+ *
+ * `surface` 非空时切成分层变体（歌单 / 歌手页）。**这不是样式偏好，是宿主的层叠契约**：
+ * 集合层挂在首页挂载点（App.tsx 的 `absolute inset-0 z-10`）里，而宿主的转场背景板
+ * （GridViewOverlayHost.tsx:654）是它的兄弟节点、`fixed z-[49]` 且不透明。
+ * 集合 surface 不自己抬到 49 之上，就整页被那层底板盖住 —— DOM 里内容齐全、命中测试也正常
+ * （底板是 pointer-events-none），但屏幕上就是一片空白。三套内建 UI 都自带这一层：
+ * GridView `z-[110]` / ArtistGridView `z-50` / TUI 两个 surface 都 `z-[110]`
+ * （契约写在 grid/transitions/morphGeometry.ts:135-140 的注释里）。
+ *
+ * 首页不能这么干：它本来就该待在 home mount point 的层叠上下文里，由宿主决定可见性。
+ */
 export const NeteaseShell: React.FC<{
     palette: NeteasePalette;
+    /** 传 'collection' / 'artist' 表示这是叠在首页之上的层；首页不传。 */
+    surface?: 'collection' | 'artist';
     children: React.ReactNode;
-}> = ({ palette, children }) => (
+}> = ({ palette, surface, children }) => (
     <div
-        className="flex h-full min-h-0 flex-col"
+        className={surface ? 'fixed inset-0 z-[110] flex flex-col overflow-hidden' : 'flex h-full min-h-0 flex-col'}
         style={{ background: 'var(--nt-bg)', color: 'var(--nt-text)', ...paletteToCssVars(palette) }}
         data-netease-root="true"
+        // 转场测量与 dev 的 renderer 切换按这两个属性定位当前层（见 morphGeometry 的说明）。
+        data-library-renderer={surface ? 'netease' : undefined}
+        data-library-surface={surface}
     >
         <style>{NETEASE_STYLES}</style>
         {children}

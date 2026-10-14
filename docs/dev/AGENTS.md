@@ -356,6 +356,55 @@ DOM 取证用 `[data-ponder="player-bar"]`，比读 className 稳。
 另外 `omni.ts:106` 在 provider 切换途中抛 `AbortError`——做加载态时别把它当普通失败吞掉，
 否则一次切号就把页面永久锁死。
 
+### ⛔ 集合 / 歌手 surface 必须自己抬 z-index（宿主层叠契约）
+
+集合层挂在首页挂载点里（`App.tsx` 的 `absolute inset-0 z-10`，`data-wall-handoff-layer="home"`），
+而宿主的转场背景板 `GridViewOverlayHost.tsx:654` 是它的**兄弟节点**，`fixed inset-0 z-[49] pointer-events-none`
+且背景不透明。
+
+**集合层不带 z-index 就会被这层底板整页盖住。** 症状极难认：
+
+- DOM 里曲目齐全（实测 34/185 首，行高、真实尺寸、外层 `fixed inset-0` 全对）
+- `elementFromPoint` 命中测试也返回歌曲按钮
+- 但 adb 截图只有背景色 + 播放条（34 KB vs 有内容时 559 KB）
+
+**因为底板是 `pointer-events-none`，点击照样穿透、DOM 一切正常，只有视觉被盖死** —— 很容易误判成
+「渲染没跑」「数据没到」「动画停在第 0 帧」。用 adb 真截图对比字节数是唯一可靠的判据。
+
+三套内建 UI 都自带这一层，是既有契约而非风格偏好：
+`GridView z-[110]`（`grid/GridView.tsx`）、`ArtistGridView z-50`（`:1229`）、
+TUI 两个 surface 都 `z-[110]`（`tui/LibraryTuiView.tsx:294`、`LibraryTuiArtist.tsx:217`）。
+**权威说明在 `grid/transitions/morphGeometry.ts:135-141` 的注释里**，逐字写着集合层要高于 detail backdrop、
+低于 detail grids 自己的 z-index 是故意的。
+
+套件适配要遵守契约：**自己加 `fixed inset-0 z-[110]` + `data-library-surface` / `data-library-renderer`**，
+不要去改宿主的 `z-[49]` 底板。首页相反 —— 它本来就该待在 `z-10` 上下文里，**不要**抬。
+（netease 的做法是 `NeteaseShell` 收一个可选 `surface` prop 切两形态，见 `neteaseParts.tsx:399`。）
+
+### ⛔ `onOpenGridView` 的描述符不能靠 `as` 强转
+
+`LibraryCollectionDescriptor.source` 是**必填**字段（`core/contracts/collection.ts:14`），
+而 `createCollectionResource.ts:44-47` 只认 `'online'` / `'navidrome'`：
+
+```ts
+if (descriptor.source === 'online') return createOnlineCollectionResource(key, onlineDeps);
+if (descriptor.source === 'navidrome') return createNavidromeCollectionResource(key);
+return createStaticCollectionResource(key, []);   // ← 漏 source = 空的静态资源
+```
+
+漏了 `source` 就落到最后一行，`ensure()` 里的 `next.source !== 'online'` 随即早退，
+**一条请求都不发**，详情页永远停在「0 首 / 这里还没有歌曲」。
+
+迷惑性在于：标题、封面、返回键全都正常，只有内容空 —— 极易误判成音源挂了。
+
+正确入口是契约给的 `homeResources.actions.openOnlineCard({id,name,type,raw}, providerId, onOpenGridView)`
+（`core/contracts/homeModel.ts:212-225`），它内部经 `onlineCardCollection`（`model/homeCards.ts:122`）
++ 宿主 `describeOnlineCollection`（`app/createLibraryHomePort.ts:44`）构造带 `source:'online'` 的描述符，
+顺带把私人 FM 卡识别成「直接播放」而不是打开集合。
+
+⚠️ **手写 `as Parameters<typeof onOpenGridView>[0]` 就是这个 bug 的直接成因** —— TS 不会拦你，
+静默降级成空资源。**别用类型断言绕过必填字段。**
+
 ### ⛔ `SOP` — 装机验证前先核对 `lastUpdateTime`
 
 见上面第一条。**「构建成功」不等于「装机成功」**，这两步在本仓是分开的脚本。

@@ -34,7 +34,7 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
     const artistName = snapshot?.detail?.name || collection.name;
 
     return (
-        <NeteaseShell palette={palette}>
+        <NeteaseShell palette={palette} surface="artist">
             <div className="flex min-h-[48px] shrink-0 items-center gap-1 px-2">
                 <button type="button" onClick={onBack} aria-label="返回" className="rounded-full p-2">
                     <ChevronLeft size={20} style={{ color: 'var(--nt-text)' }} />

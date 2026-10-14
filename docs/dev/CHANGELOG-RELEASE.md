@@ -8,6 +8,105 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-14-collection-detail` — 修「点开歌单不显示内容」：两个独立 bug
+
+**性质**：修 bug（2 个）+ 补接线。结论：达成，已真机验证。
+
+用户报「点开歌单后屏幕上不显示内容」。排查下来是**两个叠在一起的独立 bug**，
+单独任何一个都不会造成他描述的那个现象——必须都修掉歌单详情才真的能用。
+
+#### 1. Bug A：歌单详情永远 0 首（一条请求都不发）
+
+现象是标题、封面、返回键全正常，内容却是 `0 首 / 这里还没有歌曲 / 在线音源没响应`，
+而且**一条 API 请求都没有**。这排除了网络与音源问题，指向资源层。
+
+根因：`NeteaseHome.openCollection` 自己拼描述符丢给 `onOpenGridView`，用
+`as Parameters<typeof onOpenGridView>[0]` 强转，**漏掉必填字段 `source`**：
+
+```ts
+// createCollectionResource.ts:44-47 —— 漏 source 就落到这里
+if (descriptor.source === 'online') return createOnlineCollectionResource(key, onlineDeps);
+if (descriptor.source === 'navidrome') return createNavidromeCollectionResource(key);
+return createStaticCollectionResource(key, []);   // ← 空的静态资源
+```
+
+于是 `onlineCollectionResource.ensure()` 里的 `next.source !== 'online'` 直接早退。
+**TS 不拦 `as` 强转，静默降级成空资源。**
+
+修法：改走契约给的 `homeResources.actions.openOnlineCard({id,name,type,raw}, providerId, onOpenGridView)`。
+它内部经 `onlineCardCollection` + 宿主 `describeOnlineCollection` 构造带 `source:'online'` 的描述符。
+
+#### 2. Bug B：数据有了，但整页视觉被盖死（用户报的「不显示内容」）
+
+修完 Bug A，数据真到了——DOM 里 34 首歌（满页 185 首）布局完全正常：
+歌曲行 y=236、尺寸真实、外层 `fixed inset-0`，`elementFromPoint` 命中测试也返回歌曲按钮。
+**但 adb 截图只有背景色 + 播放条，34 KB（有内容时同页是 559 KB）。**
+
+根因是层叠：集合层挂在首页挂载点（`App.tsx:2724` 的 `absolute inset-0 z-10`）里，
+而宿主转场背景板 `GridViewOverlayHost.tsx:654` 是它的**兄弟节点**，
+`fixed inset-0 z-[49] pointer-events-none` + 不透明 `--bg-color`。
+netease 集合层自己**完全没有 z-index**，就落在 `z-49` 底板之下。
+
+**因为底板是 `pointer-events-none`，点击照样穿透、DOM 一切正常，只有视觉被盖死** ——
+这就是为什么前几轮排查全被带偏（一度怀疑渲染没跑、数据没到、动画停在第 0 帧）。
+
+修法按既有契约，而不是改宿主：三套内建 UI 全部自带这一层——
+`GridView z-[110]`、`ArtistGridView z-50`、TUI 两个 surface `z-[110]`。
+**权威依据是 `grid/transitions/morphGeometry.ts:135-141` 的注释**，逐字说明集合层要高于
+detail backdrop、且故意低于 detail grids 自己的 z-index。
+
+`NeteaseShell` 因此加了一个可选 `surface?: 'collection' | 'artist'` prop：
+非空时用 `fixed inset-0 z-[110] flex flex-col overflow-hidden` 并挂
+`data-library-renderer="netease"` / `data-library-surface={surface}`；
+**首页保持 `flex h-full min-h-0 flex-col` 不动**——它本来就该待在 `z-10` 上下文里。
+
+宿主一行没改。歌手页（`surface="artist"`）同源生效，不用二次修。
+
+#### 3. 顺带补上两个入口按钮的 onClick
+
+每日推荐 / 私人 FM 这两个按钮**原本完全没接 `onClick`**，点了毫无反应：
+- 每日推荐 → `openOnlineCard({id:'daily_recommendations', ..., raw:{..., isDailyRecommendations:true}}, activeProviderId, onOpenGridView)`
+  （⚠️ `raw` 里必须带 `isDailyRecommendations: true`，否则资源侧走分页而不是 `getDailySongs`，见 `onlineCollectionResource.ts:47`）
+- 私人 FM → `homeResources.actions.playPersonalFm()`
+
+`activeProviderId` 取自 `account.getSnapshot().activeProviderId`。
+
+#### 真机验收数据（一加 Ace 3 / Android 16 / 视口 361×794 / density 3.5）
+
+| 项 | 实测 |
+| --- | --- |
+| tsc --noEmit | 0 error |
+| 推荐墙封面 | 35 张全部 `naturalWidth > 0` |
+| 每日推荐 | 33 首，封面正常 |
+| **点推荐歌单卡** | **185 首 / 真实歌名歌手时长 / 简介折叠 / 操作按钮齐全 / 截图 559 KB** |
+| 空态提示 | `empty: null`（已消失） |
+| **实际 API 调用** | `/playlist/track/all?limit=150&offset=0`、`/playlist/detail/dynamic`、`/playlist/track/all?limit=1000&offset=150`（后台补页）三条全发 |
+| 每日推荐按钮 | 打开详情页，33 首，真实歌曲 |
+| 私人 FM 按钮 | 直接播放「ダンスフロアの果実 (feat. nicamoq) Yunomi」，切到播放页 |
+| 返回按钮 | 回首页，35 张推荐墙完好 |
+| 行内「⋯」菜单 | 真实触摸可打开：下一首播放 / 添加到队列 / 从歌单移除（红）/ 添加到歌单 / 查看歌手 |
+| 歌手页 | 332 KB 截图，MIRWOLF 头像 + 热门歌曲 9 条全部正常（分层修复同源生效） |
+| `[data-library-surface]` | `collection`，renderer `netease`，`z: 110` |
+| 装机核对 | APK 21:32:47 / installed 21:32:57 ✓ |
+| 全量单测 | 647 passed / **1 failed** / 1 skipped（649 文件）；7157 passed / 2 failed / 2 skipped（7161 用例） |
+
+#### ⚠️ 那 1 个失败用例与本次改动无关（已用 stash 证伪）
+
+`test/unit/sync/themeSyncRegistry.test.ts` 的两个 IndexedDB 迁移用例在**全量并行**下稳定失败
+（`AssertionError: expected {} to deeply equal { 'netease:id:42': … }`），单独跑该文件 3 passed / 914ms，
+全量跑时该文件耗时 5551ms——是负载下的超时/抖动。
+
+已 `git stash` 到 HEAD（不含本轮改动）跑全量：**同样失败 2 个、7157 passed**，
+**确认是既有问题**，本轮未修。要修应单独排期。
+
+#### 已知未做
+
+- **宿主胶囊浮条在歌单页 / 歌手页仍会盖住列表底部若干行**（截图可见 `00:00 —— 03:50` 压住第 8/9 行附近）。
+  上一条让位判断里**浏览深度 > 0 时故意保留**浮条——那几屏没有 netease 迷你播放条，
+  关掉它们就没有播放入口了。属用户明确「本轮不处理」的播放条细节。
+- 迷你播放条真实 `isPlaying` 状态、右侧「队列」按钮接真实队列面板（同上一条，用户说了本轮不做）。
+- 歌手页只做了截图级目视确认，未逐项验收藏热门歌曲 / 专辑 tab / 续页。
+
 ### `dev-2026-10-14-feed-and-playerbar` — 推荐墙真出数据 + 宿主浮条让位
 
 **性质**：修 bug + 一处必要的宿主改动。结论：达成，已真机验证。

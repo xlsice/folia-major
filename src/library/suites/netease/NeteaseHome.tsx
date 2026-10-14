@@ -52,6 +52,7 @@ const TAB_LABELS: Record<HomeTabId, string> = {
 
 const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
     declaredActions,
+    account,
     playlists,
     localPlaylists,
     localSongs,
@@ -112,12 +113,27 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
         [playlists, needle],
     );
 
-    const openCollection = (collection: ProviderCollection) => onOpenGridView({
-        id: collection.id,
-        providerId: collection.providerId,
-        name: collection.name,
-        type: collection.type,
-    } as Parameters<typeof onOpenGridView>[0]);
+    /**
+     * 打开一个在线歌单 / 专辑。
+     *
+     * ⚠️ 为什么**不能**自己拼描述符丢给 `onOpenGridView`（2026-10-14 真机实测）：
+     * `LibraryCollectionDescriptor.source` 是必填字段，而 `createCollectionResource.ts:45-47` 只认
+     * `'online'` / `'navidrome'`，其余一律落到 `createStaticCollectionResource(key, [])` —— **空静态资源**。
+     * 于是 `ensure()` 里的 `next.source !== 'online'` 直接早退，一条请求都不发，
+     * 详情页永远停在「0 首 / 这里还没有歌曲」。
+     *
+     * 症状极具迷惑性：标题、封面、返回键全都正常，只有内容是空的，很容易误判成「音源挂了」。
+     * 正确入口是契约给的 `homeResources.actions.openOnlineCard` —— 它内部经
+     * `onlineCardCollection` + 宿主的 `describeOnlineCollection` 构造带 `source: 'online'` 的描述符，
+     * 顺带把私人 FM 卡识别成「直接播放」而不是打开集合。
+     */
+    const openCollection = (collection: ProviderCollection) => {
+        void homeResources.actions.openOnlineCard(
+            { id: collection.id, name: collection.name, type: collection.type, raw: collection },
+            collection.providerId,
+            onOpenGridView,
+        );
+    };
 
     const localCards = React.useMemo(
         () => localPlaylists.filter(item => matchName(item.name)),
@@ -232,6 +248,23 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
     const dailyCover = feed?.dailySongs[0] ? getSongCoverUrl(feed.dailySongs[0]) : undefined;
     const personalFmCover = feed?.personalFm[0] ? getSongCoverUrl(feed.personalFm[0]) : undefined;
 
+    // 两个入口按钮的动作。⚠️ 这两个按钮**曾经完全没接 onClick**，点了毫无反应（2026-10-14 实测）。
+    const activeProviderId = account.getSnapshot().activeProviderId;
+    const openDailyRecommendations = () => {
+        void homeResources.actions.openOnlineCard(
+            {
+                id: 'daily_recommendations',
+                name: '每日推荐',
+                type: 'daily_recommendations',
+                // isDailyRecommendations 决定资源侧走 getDailySongs 而不是分页（onlineCollectionResource.ts:47）。
+                raw: { id: 'daily_recommendations', name: '每日推荐', isDailyRecommendations: true },
+            },
+            activeProviderId,
+            onOpenGridView,
+        );
+    };
+    const playPersonalFm = () => void homeResources.actions.playPersonalFm();
+
     /** 推荐页（网易云第一屏）：每日推荐 / 私人 FM 两个入口 + 推荐歌单墙。 */
     const renderDiscoverTab = () => {
         const hasFeed = recommended.length > 0 || dailyCount > 0;
@@ -242,6 +275,7 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                     <div className="grid grid-cols-2 gap-3 px-4 pt-1">
                         <button
                             type="button"
+                            onClick={openDailyRecommendations}
                             className="flex flex-col items-center gap-2 rounded-xl py-4"
                             style={{ background: 'var(--nt-surface)' }}
                         >
@@ -266,6 +300,7 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                         </button>
                         <button
                             type="button"
+                            onClick={playPersonalFm}
                             className="flex flex-col items-center gap-2 rounded-xl py-4"
                             style={{ background: 'var(--nt-surface)' }}
                         >

@@ -151,7 +151,7 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
     };
 
     return (
-        <NeteaseShell palette={palette}>
+        <NeteaseShell palette={palette} surface="collection">
             {/* 返回栏 */}
             <div className="flex min-h-[48px] shrink-0 items-center gap-1 px-2">
                 <button

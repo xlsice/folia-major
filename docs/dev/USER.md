@@ -104,6 +104,18 @@
    `C:\Users\wodes\XLS\APP\Folia-Android\Folia-Android-debug-0.7.18.apk`。
    **2026-10-14 更新**：推荐墙已真出数据（35 张封面 / 每日推荐 33 首），
    宿主浮条与套件标签栏的**压叠**已修（真机 adb 截图确认）。
+   **再更新**：**「点开歌单不显示内容」已修复并真机验证**——这是两个叠在一起的独立 bug
+   （描述符漏必填 `source` 被静默降级成空资源 + 集合层没抬 z-index 被宿主 `z-[49]` 底板盖死），
+   现在点推荐歌单卡能出 **185 首真实歌曲**，每日推荐 33 首，私人 FM 直接播，行内「⋯」菜单与歌手页全通。
+1.5. **⚠️ 集合页必须自己抬 z-index**（写任何新套件的集合/歌手页都会再踩）：
+   集合层挂在首页 `absolute inset-0 z-10` 里，宿主转场背景板 `GridViewOverlayHost.tsx:654` 是它的
+   **兄弟节点**且 `z-[49]` 不透明 —— 不自带 `z-[110]` + `data-library-surface` 就会被盖死。
+   **因为底板 `pointer-events-none`，点击能穿透、DOM 全对，只有视觉空白**，
+   靠 DOM / 命中测试查不出来，只能靠 adb 真截图的字节数（34 KB vs 559 KB）。
+   契约依据在 `grid/transitions/morphGeometry.ts:135-141` 注释。详见 AGENTS.md。
+1.6. **⚠️ 别用 `as` 强转拼 `onOpenGridView` 的描述符**：`source` 是必填字段，
+   漏了会被 `createCollectionResource.ts:44-47` 静默降级成空的静态资源，
+   一条请求都不发，详情页永远「0 首」。走 `homeResources.actions.openOnlineCard`。
 2. **⚠️ `docs/dev/android-build.ps1` 只打包不装机** —— 每次装机后必须自己核对：
    `adb shell dumpsys package top.izuna.foliamajor | Select-String lastUpdateTime`，
    时间戳早于 APK 的 `LastWriteTime` 就是没装上（我因此把一个未验证的改动当成「已实测」汇报过）。
@@ -125,6 +137,9 @@
 7. **迷你播放条还没接真实播放状态** —— `NeteaseMiniPlayer` 的 `onTogglePlayback` 已接，
    但契约的 home props 里没有 `isPlaying` 字段，图标恒为「播放」。要读 `usePlaybackStore`。
    右侧「队列」按钮目前只弹 `onStatusMessage` 提示，没接真实队列面板。**用户说了本轮不做。**
+7.5. **宿主胶囊浮条在歌单页 / 歌手页仍盖住列表底部若干行**（`00:00 —— 03:50` 压住第 8/9 行附近）。
+   **这是刻意的，不是漏修**：上一条让它位时把「浏览深度 > 0」排除在外了——
+   那几屏没有 netease 迷你播放条，关掉浮条就没有播放入口。属用户本轮明确不处理的播放条细节。
 8. **QQ / 酷狗音源还没通** —— `.env.local` 只配了网易云。那两个平台仍报 `*_API_BASE_MISSING`，
    且酷狗没有现成的本地包（`api-ts/` 里没有），要另外解决。
 9. **旋转适配** —— 按他要求本轮不做。转屏后缝会被挤出屏幕自动收起，点边缘标签能唤回。
