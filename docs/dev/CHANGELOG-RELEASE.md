@@ -1327,9 +1327,143 @@ C:\Users\wodes\XLS\APP\Folia-Android\Folia-Android-debug-0.7.18.apk   （归档�
 
 ---
 
-## 📦 历史归档
+### `dev-2026-10-15-background-playback` — 后台自动续播 + 系统媒体会话 (功能)
 
-（暂无。二开功能改动从下一条开始。）
+**性质**：功能 + 基础设施
+
+#### 变更
+
+修好了安卓版「一首歌放完接不上下一首」，并补上通知栏 / 锁屏 / 耳机键。
+方案与完整实测数据见 [`BACKGROUND-PLAYBACK.md`](BACKGROUND-PLAYBACK.md)。
+
+| 文件 | 改动 |
+| --- | --- |
+| `android/.../FoliaMediaSessionService.java` | **新增**。mediaPlayback 前台服务 + `MediaSessionCompat`。只镜像状态，不发声 |
+| `android/.../NativeMediaSessionPlugin.java` | **新增**。JS ↔ 原生桥：`sync` / `setArtwork` / `stop` / 通知权限 |
+| `android/.../MainActivity.java` | 注册 `NativeMediaSessionPlugin`、起服务、`onDestroy` 撤服务 |
+| `android/app/src/main/AndroidManifest.xml` | 4 条权限 + `<service foregroundServiceType="mediaPlayback">` + `MediaButtonReceiver` |
+| `android/variables.gradle`、`android/app/build.gradle` | `androidx.media:media:1.8.0`（**不引 media3**） |
+| `src/utils/nativeMediaSession.ts` | **新增**。双闸平台隔离，形状照抄 `navigation/back/nativeBackBridge.ts` |
+| `src/hooks/useNativeMediaSessionBridge.ts` | **新增**。播放状态→原生、系统控制→JS、封面、通知权限 |
+| `src/App.tsx` | 在 `useMediaSessionBridge` **并列**接入新 hook |
+
+`src/hooks/useMediaSessionBridge.ts` 与 `src/utils/mediaSessionSync.ts` **一行未改** ——
+它们在安卓上本来就不生效（见下），保留给网页版 / Electron。
+
+#### 根因（第一版判断错了两轮，这里记最终版）
+
+`navigator.mediaSession` 在 Android WebView 里**根本不存在**（实测取 `playbackState`
+得到 `"unsupported"`），`useMediaSessionBridge` 的三个 effect 全部第一行就 return。
+更深一层：**页面隐藏时 `<audio>.play()` 会被静默吞掉** —— Promise **RESOLVED**，
+但元素永远 `paused=true`、`currentTime` 不动（实测 20 个采样点 ct 冻结在 0.15）。
+于是「隐藏前就在播的元素不受影响，隐藏后起播的起不来」= 一首歌放完就断。
+
+加 mediaPlayback 前台服务后，进程从后台 cgroup（`b/`）提到感知级（`prcp` + `FGS`），
+浏览器这才承认隐藏页面上的起播。
+
+#### 验证
+
+全部在 PJE110 / Android 16 / WebView 138.0.7204.179 真机实测：
+
+- **隐藏态起播**：`PRE_paused: true` + `hiddenAtCall: true` → `play()` RESOLVED，
+  `ct` 44.99 → 49.96 → 54.49
+- **后台自动续播**：`ended` → `[App] playSong initiated` → `emptied` → `loadstart` → `playing`，
+  此后 ct 一路在涨
+- **系统会话**：`state=PLAYING(3), position=15400, actions=823`，
+  `metadata: 老城区，新样貌 / 异环10AM / 早安，海特洛`
+- **媒体按键**：`mediaButtonReceiver=MBR {... MediaButtonReceiver ...}`（原先是 `null`）
+- **锁屏**：媒体标签显示真实曲目 `♫ ELLY,K, 异环10AM, 曲奇`
+- **通知记录**：`id=1001 category=transport vis=PUBLIC FOREGROUND_SERVICE`
+- `npx tsc --noEmit` 零错误
+
+#### 踩坑
+
+- ⛔ **原生绝不能抢音频焦点**。发声的是 WebView 的 `<audio>`，Chromium 自己就持有焦点。
+  服务再发 `AUDIOFOCUS_GAIN` 会把它挤掉 → 我们收到 `LOSS` → 通知 JS 暂停 →
+  **播放刚开始 250ms 就自己暂停**。自造反馈环，焦点整个交给 Chromium。
+- ⛔ **`@PluginMethod` 忘了 `call.resolve()`**：原生状态照样更新（因为是同步调用），
+  但 JS 那个 Promise 永不落地，表现为 CDP `Runtime.evaluate_TIMEOUT`。
+  最容易被误判成「hook 没跑到」。
+- ⛔ **`@PermissionCallback` 注解不能省**：少了它抛 `No callback found for permission`，
+  JS 侧只看到空对象 `{}`。
+- ⛔ **`BridgeActivity.onDestroy()` 是 `public` 不是 final**：写成 `protected` 会报
+  「无法覆盖」，看起来像 final 其实只是可见性不够。
+- ⛔ **`MediaSessionCompat` 没有 `getMetadata()`**：`setMetadata` 是整体替换、
+  没有读回 API，得自己留一份 title/artist/album。
+- ⛔ **通知样式必须用 `androidx.media.app.NotificationCompat.MediaStyle`**：
+  框架 `Notification.MediaStyle` 收的是框架 `MediaSession.Token`，类型不兼容编译失败。
+- ⚠️ **「有声音」完全不能证明 JS 还活着**：解码输出在独立线程，不受主线程节流约束。
+  第一版方案误判成「主线程被节流」，实测后台 `setTimeout(0)` / `MessageChannel` 都是 **1ms**，
+  只有 rAF 被压到 0.79fps、idleCallback 被饿死 —— 都与播放链路无关。
+- ⚠️ **遇到「播完不续」先看 console 有没有 `[App] playSong initiated`**：
+  有 = 切歌链路跑了，问题在取流（本轮遇到一次 `stage: "song-url"` 的
+  natfrp 香港节点瞬时抖动）；没有 = 队列空了或被拦。两者别混。
+- ⚠️ **`adb shell pm grant` 与 `appops set` 在这台机器都被拒**（shell uid 无权限），
+  通知权限只能靠 App 自己弹窗申请。
+
+#### 待决
+
+- **来电/抢占时的暂停行为未验证**：按上面的结论把焦点完全交给了 Chromium，
+  这条路径没有单独测过。
+
+#### 补充（同日）：通知栏封面已修
+
+上一条记的「`setArtwork` 从未被调用 / 属数据层问题」**是误判，已推翻**。
+
+- **根因是原生侧竞态，不是数据层**：`MediaSessionCompat.setMetadata()` 是**整份替换**语义，
+  而 `applyNow()` 跟着 `onTimeUpdate` 以约 4Hz 调用、每次都重写一份只带
+  title/artist/album 的 metadata —— `applyArtwork()` 刚设进去的封面图
+  **下一次 timeupdate 就被抹掉**。表现为 `metadata: size=3`。
+- **修法**（`FoliaMediaSessionService.java`）：`currentArtwork` 留一份在实例上，
+  metadata 重建统一走 `applyMetadata()`，文本与封面永远一起写；
+  `applyNow()` 改成文本真变了才 `setMetadata`；
+  `applyArtwork()` 挪回主线程；`buildNotification()` 显式 `setLargeIcon`。
+- **另外补了 `toSafeRemoteUrl`**（`useNativeMediaSessionBridge.ts`）与原生侧 http→https 兜底：
+  netease/kugou 至今还发 `http://` 封面，targetSdk 36 默认禁明文会被 NetworkSecurityPolicy 拒。
+  与 `createCoverUrlResolver` 是同一个消毒理由，**别再漏**。
+- **验证**：`metadata: size=4, description=Breathe, Kenzie, Breathe`；
+  `android.largeIcon=Icon (typ=BITMAP size=168x168)`；
+  SystemUI 日志里 `share_images/top.izuna.foliamajor_0_artwork.png`
+  （系统自己把封面写成文件并在媒体面板引用，还认出了带中文 voiceLabel 的四个控制按钮）。
+  切歌后仍为 `size=4`，无上一首残留。
+- **顺带收掉一个新暴露的开销**：封面一到位，SystemUI 就在 4Hz 重解码封面
+  （日志每 260ms 一条 `onMediaDataLoaded`）。通知改为只在「播放态翻转」或
+  「曲目/封面变了」时重发；`setPlaybackState` 仍 4Hz（面板靠 position+rate 自己做进度）。
+  改完 10s 窗口内 `onMediaDataLoaded` = 0。暂停/恢复的 flags 翻转已复验正常。
+
+#### 补充（同日）：进度条卡 00:00 / 04:00
+
+封面修好后雪冷水报控制中心媒体卡片进度条**总长永远 04:00、位置永远 00:00**。
+
+- **根因**：`applyState(...)` 把 `durationMs` 传到了 `applyNow(...)`，但 **`applyNow` 没用它** ——
+  参数进去就丢了。`MediaMetadataCompat` 里从来没有 `METADATA_KEY_DURATION`，
+  系统 UI 拿不到总长就退化成 04:00 占位，比例算不出来 → 位置恒为 00:00。
+- **排除法**：先确认不是 position 没推进 ——
+  `dumpsys media_session` 两次取样 98540 → 102847，`updated` 差 4258ms，位置一直在走。
+  问题只在「没有总长」这一侧。
+- **修法**：`currentDurationMs` 留一份，metadata 重建时 `putLong(METADATA_KEY_DURATION, ...)`，
+  并把 duration 纳入变更判定。
+- ⚠️ **只在拿到真实时长时才写**：写 0 等于告诉系统「这首歌 0 毫秒」，
+  进度条会变成空的、永远在 0 的条，比不写还糟。切歌时 `audio.duration` 是 `NaN`，
+  靠 `loadedmetadata` 事件再推真实值。
+- **验证**：`metadata: size=5`；控制中心卡片 `00:44 —— 02:31`，
+  与 `audio.duration=151.1` 一致，位置随播放推进（`00:44` → `01:11`）；
+  切歌后仍为 `size=5`，duration 没被后来的空值冲掉。
+- ⭐ **这台机器控制中心的媒体卡片不在通知栏里**：控制中心是**顶部右侧**下拉，
+  通知是**顶部左侧**下拉（ColorOS 布局，同 iOS）。
+  视觉验证媒体卡片要走右侧入口，否则一直只能看到通知栏那张。
+
+#### 踩坑
+
+- ⚠️ **`logcat -g` 显示 main buffer 只有 256 KiB，这机器刷屏极凶**，
+  App 自己那几行 `Log.i` 几秒内就被轮转掉。我据此得出过
+  「`setArtwork` 从未被调用」的错误结论。
+  ⛔ **别拿「日志里没有」当证据**；本项目判定优先级：
+  `dumpsys media_session` / `dumpsys notification` > logcat。
+- ⚠️ **`cmd statusbar expand-notifications` 开的是通知栏，不是控制中心。**
+  这台机器（ColorOS）的媒体卡片在**控制中心**里，入口是**顶部右侧**下拉；
+  通知是顶部左侧下拉。我曾据此误判「设备锁屏了、screencap 只能拿到安全层」——
+  其实手机根本没锁，是开错了面板。⛔ 别用截图内容去反推锁屏状态。
 
 ---
 

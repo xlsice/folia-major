@@ -28,6 +28,21 @@
 
         </activity>
 
+        <service
+            android:name=".FoliaMediaSessionService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!-- 耳机 / 车机 / 蓝牙的媒体按键要经它转成 MediaSession 的回调。
+             不声明的话 dumpsys 里 mediaButtonReceiver=null，按键不会有任何反应。 -->
+        <receiver
+            android:name="androidx.media.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -42,4 +57,13 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- 2026-10-15：后台播放（见 docs/dev/BACKGROUND-PLAYBACK.md）。
+         mediaPlayback 类型的前台服务是这一组权限的核心：
+         它把进程提离后台 cgroup（b/ → prcp + FGS），
+         浏览器这才允许隐藏页面上的 <audio>.play() —— 没有它，一首歌放完就接不上下一首。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 </manifest>

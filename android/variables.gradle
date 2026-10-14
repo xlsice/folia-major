@@ -13,4 +13,10 @@ ext {
     androidxJunitVersion = '1.3.0'
     androidxEspressoCoreVersion = '3.7.0'
     cordovaAndroidVersion = '14.0.1'
+    // 2026-10-15：后台播放实验用。
+    // 用 androidx.media 的 MediaSessionCompat 而不是 media3 —— 它不需要 Player 对象，
+    // API 面小得多，实验阶段先要「结论」不要「完整实现」。
+    // media3 最新稳定版是 1.11.1（Google Maven 实测），真要上 media3 时把版本写在这里。
+    androidxMediaVersion = '1.8.0'
+    media3Version = '1.11.1'
 }

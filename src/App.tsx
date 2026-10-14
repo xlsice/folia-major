@@ -90,6 +90,7 @@ import { useLocalLibraryAutoScan } from './hooks/useLocalLibraryAutoScan';
 import { useElectronVideoExportController } from './hooks/useElectronVideoExportController';
 import { useElectronWindowPlaybackHandoff } from './hooks/useElectronWindowPlaybackHandoff';
 import { useMediaSessionBridge } from './hooks/useMediaSessionBridge';
+import { useNativeMediaSessionBridge } from './hooks/useNativeMediaSessionBridge';
 import { usePlayerChromeAutoHide } from './hooks/usePlayerChromeAutoHide';
 import { usePlaybackAudioBridge } from './hooks/usePlaybackAudioBridge';
 import { useTranscodeFallback } from './hooks/useTranscodeFallback';
@@ -1459,6 +1460,27 @@ export default function App() {
         // incoming track's duration and progress for the length of every blend - the system panel
         // named one song and counted another. `audioSrc` moves with the element or the guard fails
         // for the whole blend and the panel stops updating instead.
+        getDisplayAudioElement: automix.getDisplayElement,
+        audioSrc: automix.tailSrc ?? audioSrc,
+        currentSong: displaySong,
+        cachedCoverUrl: displayCoverUrl ?? cachedCoverUrl,
+        playerState: displayPlayerState,
+        isNowPlayingStageActive,
+        unknownArtistLabel: t('ui.unknownArtist'),
+        mediaSessionPlayRef,
+        mediaSessionPauseRef,
+        mediaSessionPrevRef,
+        mediaSessionNextRef,
+        isNowPlayingControlDisabledRef,
+    });
+
+    // 安卓端：WebView 里 navigator.mediaSession 不存在（实测 playbackState 取值是
+    // "unsupported"），上面那个 hook 在安卓上三个 effect 全都第一行就 return 了。
+    // 没有 MediaSession 就没有通知栏/锁屏/耳机键，更没有 mediaPlayback 前台服务 ——
+    // 而没有它，隐藏页面上的 <audio>.play() 会被静默吞掉，一首歌放完就接不上下一首。
+    // 详见 docs/dev/BACKGROUND-PLAYBACK.md。参数与上面完全一致，两条路并列。
+    useNativeMediaSessionBridge({
+        audioRef,
         getDisplayAudioElement: automix.getDisplayElement,
         audioSrc: automix.tailSrc ?? audioSrc,
         currentSong: displaySong,
