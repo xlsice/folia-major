@@ -8,6 +8,88 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-14-audio-fast-track` — 修「吃不到一加杜比音效」：AudioContext 走了 FastMixer 快线程
+
+**性质**：修 bug。结论：达成，已真机验证。
+
+用户报「安卓版没享受到一加的系统杜比全景音音效」。查了四轮才对根因，
+中间还推翻了自己两次结论，最终靠**跨 App 对照实验**才锁定。
+
+#### 1. 错误的起点：「换成 AudioTrack」
+
+用户初始假设是「输出格式是 OpenSL ES / AAudio，换成 AudioTrack 就能吃到系统音效」。
+
+**方向对了一半：能用系统音效的确实是 AudioTrack（不是 OpenSL ES / AAudio），
+但 Folia 本来就在 AudioTrack 上** —— `dumpsys media.audio_flinger` 的事件日志里
+Folia（uid 10412）一直是 `AT::add`/`AT::remove`（AT = AudioTrack）。
+Chromium 的 WebAudio 在 Android 上本就经 Java AudioTrack（要靠 AudioManager 做路由/音量）。
+所以「换 API」这个动作不存在。
+
+我还一度据「App 侧选哪个 API 决定厂商效果是否生效」下了结论，**这是错的**，见第 3 点。
+
+#### 2. 真正的分水岭：`F` 前缀 = FastMixer
+
+用同机 SaltPlayer 手动切换输出模式做对照，一次就把差异逼出来了：
+
+| | **Folia**<br>（修改前） | 网易云音乐 | SaltPlayer<br>(OpenSL ES) | SaltPlayer<br>(AudioTrack) |
+| --- | --- | --- | --- | --- |
+| **前缀** | **`F3`（FastMixer）** | 无前缀 | **`F3`** | 无前缀 |
+| **Latency** | **29.00 t** | 465.38 t | **37.00 t** | 183.28 t |
+| Buffer | 384 帧 | 14144 帧 | 768 帧 | 3844 帧 |
+
+**判定标志：`dumpsys media.audio_flinger` 里 track 行首的 `F` 前缀。**
+
+FastMixer 的技术特征是「**简化混音，绕过部分处理**」——它不经过 AudioFlinger 的 insert
+effect 链，所以挂在 session 上的 Dolby 效果对它不生效。
+（SaltPlayer 设置页自己就写着「OpenSL ES / AAudio …无法配合使用系统音效以及第三方音效软件」，
+技术原因就是这个 `F`。）
+
+⚠️ 这解释了为什么「用了 AudioTrack 就够了」是错的：**AudioTrack API 也可能被分配到
+FastMixer，一旦进了快通道照样绕过音效链。决定因素不是 API，是线程。**
+
+#### 3. 为什么 Folia 会被分到快通道
+
+`AudioContext` 无参构造 = 默认 `latencyHint: 'interactive'`。真机 CDP 实测 baseLatency：
+
+| latencyHint | baseLatency |
+| --- | --- |
+| **默认（interactive）** | **0.004s（4ms）** ← 极低延迟，触发 FastMixer |
+| **playback** | **0.021s（21ms）** |
+| balanced | 0.020s（20ms） |
+
+4ms 的 baseLatency 让 Chromium 主动申请低延迟通路。MDN 侧也印证：
+`latencyHint: 'playback'` 会把 baseLatency 从 0.00 抬到 0.15；
+另有实测矩阵直接写「**Android WebView → 推荐 fallback 路径 `'playback'`**」。
+
+改法：`src/hooks/usePlaybackAudioBridge.ts:141`（全仓唯一的 `new AudioContext()` 构造点）
+加 `latencyHint: 'playback'`。**一行。**
+
+#### 4. 真机验收（同机前后对照）
+
+| 项 | 修改前 | 修改后 |
+| --- | --- | --- |
+| **track 前缀** | **`F3`** | **无前缀** ✅ |
+| **Latency** | 29.00 t | **225.62 t** |
+| **Buffer** | 384 帧 | **3844 帧** |
+| tsc --noEmit | — | 0 error |
+| 装机核对 | — | APK 22:23:40 / installed 22:23:57 ✓ |
+
+三项指标同时向网易云音乐对齐，**已回到会经过 insert effect 链的普通混音线程**。
+
+#### 为什么选 `playback` 而不是改原生
+
+- **原生层改不了**：那个 `AudioTrack` 是 Chromium 内部创建的，App 代码调不到
+  `setPerformanceMode(PERFORMANCE_MODE_LOW_LATENCY)`。原生层只有 `MainActivity`（13 行）
+  和 `SafeInsetsPlugin`，没有音频代码，**改动放 JS 侧比改原生干净得多**。
+- **代价为零**：29ms 低延迟只有游戏 / 乐器需要，播音乐用不上；
+  `latencyHint` 只影响底层分配，不改变图内的 ReplayGain / 淡入淡出 / crossfade 行为。
+
+#### 已知未做 / 未验证
+
+- **听感未验证**：本条只证明了「已退出快通道、回到普通混音线程」。
+  杜比音效是否真的回来，需要人耳 A/B —— 代理没法代替耳朵。
+- 后台播放仍是最大缺口（见 USER.md），与本条无关。
+
 ### `dev-2026-10-14-collection-detail` — 修「点开歌单不显示内容」：两个独立 bug
 
 **性质**：修 bug（2 个）+ 补接线。结论：达成，已真机验证。

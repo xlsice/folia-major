@@ -134,6 +134,13 @@
    （后端返回的是 HTML 错误页而非 JSON），此时先怀疑音源不可达，而不是界面坏了。
 6. **后台播放 —— 现在是最大缺口**。`dumpsys media_session` 实测搜不到 `foliamajor`
    ⇒ 锁屏断播、耳机按键无响应。要写原生 Media3/ExoPlayer + `MediaSessionService`。
+6.5. **✅ 杜比音效问题已修（2026-10-14，待他听感确认）**。根因**不是**音频 API：
+   Folia 本来就在 AudioTrack 上，但 `new AudioContext()` 默认 `latencyHint:'interactive'`
+   让 baseLatency 只有 4ms，Chromium 把流分到了 **FastMixer 快线程（`F` 前缀）**，
+   而 FastMixer「绕过部分处理」＝绕过 Dolby 效果链。改成 `latencyHint:'playback'` 后
+   `F` 前缀消失、latency 29t→225.62t，三项指标对齐网易云音乐。
+   ⚠️ **下次别再让他「换 AudioTrack」**——已经在了。**只认 `F` 前缀**，别看流格式。
+   ⚠️ 听感我没验过，需要他自己 A/B 一下才知道音效是不是真回来了。
 7. **迷你播放条还没接真实播放状态** —— `NeteaseMiniPlayer` 的 `onTogglePlayback` 已接，
    但契约的 home props 里没有 `isPlaying` 字段，图标恒为「播放」。要读 `usePlaybackStore`。
    右侧「队列」按钮目前只弹 `onStatusMessage` 提示，没接真实队列面板。**用户说了本轮不做。**

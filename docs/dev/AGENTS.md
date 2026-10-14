@@ -405,6 +405,39 @@ return createStaticCollectionResource(key, []);   // ← 漏 source = 空的静�
 ⚠️ **手写 `as Parameters<typeof onOpenGridView>[0]` 就是这个 bug 的直接成因** —— TS 不会拦你，
 静默降级成空资源。**别用类型断言绕过必填字段。**
 
+### ⛔ WebView 音频吃不到系统音效：`AudioContext` 默认低延迟会进 FastMixer
+
+**判定标志**：`dumpsys media.audio_flinger` 里 track 行首的 **`F` 前缀**（如 `F3 6270`）= FastMixer 快线程。
+
+FastMixer 的技术特征是「简化混音，**绕过部分处理**」——不经过 AudioFlinger 的 insert effect 链，
+所以挂在 session 上的 Dolby DAP 等厂商效果**对它不生效**，表现为吃不到系统音效。
+
+⚠️ **别停在「它用的是 AudioTrack 所以没问题」这个结论上** —— AudioTrack API 同样可能被分配到
+FastMixer。决定因素不是 API，是线程。同机实测 SaltPlayer 切 OpenSL ES 出现 `F3`，切回 AudioTrack
+就无前缀，行为完全跟着 `F` 走。
+
+**根因与一行修法**：`new AudioContext()` 无参构造 = 默认 `latencyHint: 'interactive'`，
+baseLatency 低到 0.004s，Chromium 于是主动申请低延迟通路。真机实测：
+
+| latencyHint | baseLatency |
+| --- | --- |
+| 默认（interactive） | **0.004s** ← 触发 FastMixer |
+| **playback** | **0.021s** ← 修复值 |
+| balanced | 0.020s |
+
+改 `src/hooks/usePlaybackAudioBridge.ts:141`（全仓唯一构造点）加 `latencyHint: 'playback'`。
+**成本为零**：低延迟只有游戏/乐器需要，播音乐用不上。
+
+**对照基准**：网易云音乐 = 无前缀 / 465.38 t / 14144 帧，走普通 mixer，音效正常。
+拿它当标准去比，别拿自己的旧数据比。
+
+原生层改不了 —— 那个 AudioTrack 是 Chromium 内部创建的，App 调不到 `setPerformanceMode`。
+**别去写 Xposed 或改 Chromium，改 JS 侧那一行。**
+
+⚠️ 只认 `F` 前缀。**别用「流格式 / 采样率 / 挂的 effect UUID」判断**——
+实测 Folia 与网易云的格式、`STREAM_MUSIC`、`USAGE_MEDIA`、Dolby effect UUID 全都一样，
+差别只在 `F` 和 latency。
+
 ### ⛔ `SOP` — 装机验证前先核对 `lastUpdateTime`
 
 见上面第一条。**「构建成功」不等于「装机成功」**，这两步在本仓是分开的脚本。

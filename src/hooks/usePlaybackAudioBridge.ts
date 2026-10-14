@@ -138,7 +138,25 @@ export function usePlaybackAudioBridge({
         if (!audioRef.current || audioContextRef.current) return;
         try {
             const AudioContextClass = window.AudioContext || (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-            const ctx = new AudioContextClass();
+            /**
+             * ⚠️ `latencyHint` 必须是 'playback'，不能留默认（2026-10-14 真机取证）。
+             *
+             * 默认（'interactive'）在本机 baseLatency = 0.004s（4ms），Chromium 会据此把
+             * AudioTrack 分配到 **FastMixer 快线程**。判定标志是 `dumpsys media.audio_flinger`
+             * 里 track 的 **`F` 前缀**（如 `F3 6270`）+ 极低 latency（实测 29.00 t）。
+             *
+             * FastMixer 的特征是「简化混音，绕过部分处理」——它不经过 AudioFlinger 的 insert
+             * effect 链，所以一加的 Dolby DAP 全局效果**对它不生效**，表现为吃不到系统音效。
+             * 同机对照：网易云音乐无 `F` 前缀、latency 465.38 t、buffer 14144 帧，走普通
+             * mixer 线程，音效正常；SaltPlayer 切 OpenSL ES 时出现 `F3` + 37.00 t，切回
+             * AudioTrack 则无前缀 + 183.28 t——与本项目现象完全一致。
+             *
+             * 改成 'playback' 后 baseLatency = 0.021s（21ms，实测），退出快通道。
+             * **代价为零**：29ms 的低延迟只有游戏/乐器需要，播放音乐用不上；
+             * 而 latencyHint 在此只影响底层分配，不改变图表内的 ReplayGain / 淡入淡出 /
+             * crossfade 行为。
+             */
+            const ctx = new AudioContextClass({ latencyHint: 'playback' });
             audioContextRef.current = ctx;
 
             const analyser = ctx.createAnalyser();
