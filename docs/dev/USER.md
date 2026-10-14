@@ -109,12 +109,11 @@
    组件里不写死色值（用户明确要求：别弄成固定配色）。
    真机实测浅色/暗色两套变量全部正确，`onAccent` 会自动反色保对比度。
    改动它时**别在组件里加硬编码色**，加到 `src/library/suites/netease/neteaseTheme.ts`。
-2. **⚠️ 用之前必须先起音源服务**（这是当前方案最大的使用门槛）：
-   `powershell -ExecutionPolicy Bypass -File docs\dev\ncm-api.ps1`
-   —— 电脑不开机就播不了网易云。`-Status` 看状态，`-Stop` 停。
-   **长期方案（natfrp https 隧道 或 Vercel）还没定**，定了之后可以把
-   network_security_config.xml 删掉、`cleartext` 改回 false。
-   换网络后本机 IP 会变，要同步改 `.env.local` 和 network_security_config.xml。
+2. **⚠️ 音源部署在别处，不在本机**（2026-10-14 用户澄清，我曾误以为是本机 `ncm-api.ps1` 起的那个）。
+   排查「列表空 / 加载失败」类问题前，**先读 `docs/dev/NETWORK.md`**，
+   不要在本机找服务、也不要启动 `ncm-api.ps1` 来"修"问题。
+   典型症状：控制台 `[QQMusic] Search failed: SyntaxError: Unexpected token '<'`
+   （后端返回的是 HTML 错误页而非 JSON），此时先怀疑音源不可达，而不是界面坏了。
 3. **后台播放 —— 现在是最大缺口**。`dumpsys media_session` 实测搜不到 `foliamajor`
    ⇒ 锁屏断播、耳机按键无响应。要写原生 Media3/ExoPlayer + `MediaSessionService`。
 4. **QQ / 酷狗音源还没通** —— `.env.local` 只配了网易云。那两个平台仍报 `*_API_BASE_MISSING`，
