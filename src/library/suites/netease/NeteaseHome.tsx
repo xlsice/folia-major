@@ -1,11 +1,13 @@
 import React from 'react';
-import { FolderOpen, ListMusic, Radio, RefreshCw, Plus } from 'lucide-react';
+import { Compass, FolderOpen, ListMusic, Radio, RefreshCw, Plus, HardDrive, Library as LibraryIcon, Server } from 'lucide-react';
 import type { LibraryHomeSurfaceProps } from '../../core/contracts/suite';
 import type { ProviderCollection } from '../../../types/onlineMusic';
 import { buildNeteasePalette, placeholderTint } from './neteaseTheme';
+import { useSafeInsets, bottomBarPadding } from './useSafeInsets';
 import {
     NeteaseEmpty,
     NeteaseHeader,
+    NeteaseMiniPlayer,
     NeteaseMoreMenu,
     NeteaseSearchBar,
     NeteaseSectionTitle,
@@ -35,6 +37,7 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
     localPlaylists,
     localSongs,
     user,
+    currentTrack,
     theme,
     isInteractive,
     onPlaySong,
@@ -43,10 +46,13 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
     onRefreshUser,
     onRefreshLocalSongs,
     onStatusMessage,
-    homeResources,
+    onTogglePlayback,
+    onEnterPlaybackView,
     localMusicState,
     setLocalMusicState,
 }) => {
+    const insets = useSafeInsets();
+    const barInset = bottomBarPadding(insets);
     const can = new Set(declaredActions.actions);
     const [tab, setTab] = React.useState<HomeTabId>('playlist');
     const [query, setQuery] = React.useState('');
@@ -259,11 +265,12 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
         </>
     );
 
-    const tabs: readonly { id: string; label: string }[] = [
-        { id: 'playlist', label: TAB_LABELS.playlist },
-        { id: 'local', label: TAB_LABELS.local },
-        { id: 'albums', label: TAB_LABELS.albums },
-        { id: 'navidrome', label: TAB_LABELS.navidrome },
+    // 图标照网易云：首页是房子形状的「发现」，标签在文字下方
+    const tabs: readonly { id: string; label: string; icon: React.ReactNode }[] = [
+        { id: 'playlist', label: TAB_LABELS.playlist, icon: <Compass size={19} /> },
+        { id: 'local', label: TAB_LABELS.local, icon: <HardDrive size={18} /> },
+        { id: 'albums', label: TAB_LABELS.albums, icon: <LibraryIcon size={18} /> },
+        { id: 'navidrome', label: TAB_LABELS.navidrome, icon: <Server size={18} /> },
     ];
 
     return (
@@ -289,9 +296,27 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                 {tab === 'navidrome' && renderRemoteTab()}
             </div>
 
-            <div className="nt-safe-bottom shrink-0">
-                <NeteaseTabBar tabs={tabs} activeId={tab} onChange={id => setTab(id as HomeTabId)} />
-            </div>
+            {/* 迷你播放条：贴着 tab 栏上方。整条可点进播放页（网易云同款交互）。 */}
+            {currentTrack && (
+                <NeteaseMiniPlayer
+                    title={currentTrack.name}
+                    subtitle={currentTrack.artists?.map(a => a.name).join(' / ') || ''}
+                    coverUrl={currentTrack.album?.coverUrl ?? null}
+                    isPlaying={false}
+                    seed={String(currentTrack.id)}
+                    onOpenPlayer={() => onEnterPlaybackView?.()}
+                    onTogglePlayback={() => onTogglePlayback?.()}
+                    onOpenQueue={() => onStatusMessage?.({ type: 'info', text: '队列在下方播放条里' })}
+                />
+            )}
+
+            {/* 底部标签栏：bottomInset 是实测的手势区高度，不是 env()（那个恒为 0）。 */}
+            <NeteaseTabBar
+                tabs={tabs}
+                activeId={tab}
+                onChange={id => setTab(id as HomeTabId)}
+                bottomInset={barInset}
+            />
         </NeteaseShell>
     );
 };

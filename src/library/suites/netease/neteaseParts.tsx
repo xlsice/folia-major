@@ -5,35 +5,47 @@ import React from 'react';
 // 而每一批都是「上一轮 group-hover 隐身」的高发区——这里一律常显，不做悬停显形。
 
 import { useState } from 'react';
-import { ChevronDown, MoreHorizontal, Play, Search, X } from 'lucide-react';
-import { paletteToCssVars, type NeteasePalette } from './neteaseTheme';
+import { ChevronDown, Disc3, ListMusic, MoreHorizontal, Pause, Play, Search, X } from 'lucide-react';
+import { paletteToCssVars, placeholderTint, type NeteasePalette } from './neteaseTheme';
 
-/** 底部标签栏。网易云手机版的核心导航：常驻底部，选中项高亮（accent 来自当前主题）。 */
+/**
+ * 底部标签栏。几何照网易云手机版的真机实测（uiautomator dump，单位 dp）：
+ *   tab 容器 h=54dp；其中可点区 50.6dp（y=2535..2712）；图标+文字 21.7dp 居中；
+ *   标签栏底边在 774.9dp，屏幕底 794.3dp —— 留出 19.4dp 手势导航区，两者物理隔离。
+ *
+ * `bottomInset` 传进来的就是那段手势区高度（原生 SafeInsetsPlugin 给的真值）。
+ * **不能省**：省掉就贴到视口最底，点标签其实点在系统手势条上（2026-10-14 实测踩过）。
+ */
 export const NeteaseTabBar: React.FC<{
-    tabs: readonly { id: string; label: string }[];
+    tabs: readonly { id: string; label: string; icon: React.ReactNode }[];
     activeId: string;
     onChange: (id: string) => void;
-}> = ({ tabs, activeId, onChange }) => (
-    <nav
-        className="flex shrink-0 items-stretch border-t"
-        style={{ background: 'var(--nt-elevated)', borderColor: 'var(--nt-divider)' }}
-    >
-        {tabs.map(tab => {
-            const active = tab.id === activeId;
-            return (
-                <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => onChange(tab.id)}
-                    aria-current={active ? 'page' : undefined}
-                    className="flex-1 py-2.5 text-xs font-medium transition-colors"
-                    style={{ color: active ? 'var(--nt-accent)' : 'var(--nt-text-muted)' }}
-                >
-                    {tab.label}
-                </button>
-            );
-        })}
-    </nav>
+    /** 底部手势区高度（CSS px）。用测量值，不用 env()——见 useSafeInsets 的注释。 */
+    bottomInset: number;
+}> = ({ tabs, activeId, onChange, bottomInset }) => (
+    <div style={{ paddingBottom: bottomInset }} data-nt-tabbar-inset={bottomInset}>
+        <nav
+            className="flex shrink-0 items-stretch border-t"
+            style={{ background: 'var(--nt-elevated)', borderColor: 'var(--nt-divider)', height: '54px' }}
+        >
+            {tabs.map(tab => {
+                const active = tab.id === activeId;
+                return (
+                    <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => onChange(tab.id)}
+                        aria-current={active ? 'page' : undefined}
+                        className="flex flex-1 flex-col items-center justify-center gap-0.5 transition-colors"
+                        style={{ color: active ? 'var(--nt-accent)' : 'var(--nt-text-muted)' }}
+                    >
+                        {tab.icon}
+                        <span className="text-[10px] leading-none">{tab.label}</span>
+                    </button>
+                );
+            })}
+        </nav>
+    </div>
 );
 
 /** 顶部标题栏：左侧标题、右侧可选操作。滚动时会加深底色，模仿原生导航栏。 */
@@ -209,6 +221,89 @@ export const NeteaseTrackIndex: React.FC<{
     </span>
 );
 
+/**
+ * 底部播放条（迷你条）。位置与体量照网易云手机版：贴在 tab 栏正上方、左右各留一点边距的胶囊，
+ * 左侧小圆封面、中间歌名 + 歌手、右侧播放/暂停与队列键。
+ * 点整条进播放页；点右侧两颗按钮不冒泡，避免误触。
+ */
+export const NeteaseMiniPlayer: React.FC<{
+    title: string;
+    subtitle: string;
+    coverUrl?: string | null;
+    isPlaying: boolean;
+    seed: string;
+    onOpenPlayer: () => void;
+    onTogglePlayback: () => void;
+    onOpenQueue: () => void;
+}> = ({ title, subtitle, coverUrl, isPlaying, seed, onOpenPlayer, onTogglePlayback, onOpenQueue }) => (
+    <div className="shrink-0 px-3 pb-2">
+        <div
+            role="button"
+            tabIndex={0}
+            onClick={onOpenPlayer}
+            onKeyDown={event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onOpenPlayer();
+                }
+            }}
+            className="flex items-center gap-2.5 rounded-lg px-2 py-1.5"
+            style={{
+                background: 'var(--nt-elevated)',
+                border: '1px solid var(--nt-divider)',
+            }}
+        >
+            {/* 封面 40dp：网易云迷你条的封面是 40dp 圆角小方块 */}
+            <div
+                className="h-10 w-10 shrink-0 overflow-hidden rounded-md"
+                style={placeholderTint(seed, false)}
+            >
+                {coverUrl ? (
+                    <img src={coverUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                    <span className="flex h-full w-full items-center justify-center">
+                        <Disc3 size={16} style={{ color: 'var(--nt-text-faint)' }} />
+                    </span>
+                )}
+            </div>
+
+            <div className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate text-[13px] leading-tight" style={{ color: 'var(--nt-text)' }}>
+                    {title}
+                </span>
+                <span className="truncate text-[11px] leading-tight" style={{ color: 'var(--nt-text-faint)' }}>
+                    {subtitle}
+                </span>
+            </div>
+
+            <button
+                type="button"
+                aria-label={isPlaying ? '暂停' : '播放'}
+                onClick={event => {
+                    event.stopPropagation();
+                    onTogglePlayback();
+                }}
+                className="shrink-0 rounded-full p-2"
+            >
+                {isPlaying
+                    ? <Pause size={19} fill="var(--nt-text)" style={{ color: 'var(--nt-text)' }} />
+                    : <Play size={19} fill="var(--nt-text)" style={{ color: 'var(--nt-text)' }} />}
+            </button>
+            <button
+                type="button"
+                aria-label="播放队列"
+                onClick={event => {
+                    event.stopPropagation();
+                    onOpenQueue();
+                }}
+                className="shrink-0 rounded-full p-2"
+            >
+                <ListMusic size={18} style={{ color: 'var(--nt-text)' }} />
+            </button>
+        </div>
+    </div>
+);
+
 /** 圆形播放 / 暂停主按钮。collection 头部用。 */
 export const NeteasePlayButton: React.FC<{
     isPlaying: boolean;
@@ -291,13 +386,14 @@ export const formatTrackDuration = (durationMs?: number): string => {
     return `${minutes}:${String(seconds).padStart(2, '0')}`;
 };
 
-/** 全 suite 共用的样式表：滚动条隐藏、均衡器动画、底部安全区。 */
+/** 全 suite 共用的样式表：滚动条隐藏、均衡器动画。
+ *  安全区**不在这张表里**：底部避让由 useSafeInsets 量出来，以内联 padding 施加
+ *  （env(safe-area-inset-bottom) 在本机恒为 0，写进 CSS 等于没写）。 */
 export const NETEASE_STYLES = `
 @keyframes nt-eq { from { transform: scaleY(0.45); } to { transform: scaleY(1); } }
 .nt-scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .nt-scroll::-webkit-scrollbar { display: none; }
 .nt-scroll { scrollbar-width: none; }
-.nt-safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
 `;
 
 /** 铺一层「页面底色 + 全套配色变量」的外壳，四个 surface 共用。 */
