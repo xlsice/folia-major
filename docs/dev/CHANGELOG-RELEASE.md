@@ -8,6 +8,48 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-14-network-doc` — 新增 `docs/dev/NETWORK.md`：把音源网络架构写死
+
+**性质**：文档（新增 1 个文件 + 3 处指针）。不改任何运行时代码。
+
+#### 为什么写
+
+反复出现的误解是「安卓 App 拉的是这台开发 PC 的音源」。
+真实链路是手机 → 公网 → 笔记本，**开发 PC `192.168.0.104` 根本不在运行时链路上**。
+光靠 `NCM-DEPLOY.md`（部署操作手册）讲不清 —— 那是「怎么部署」，不是「现在到底谁在服务」。
+
+#### 写进去的关键澄清
+
+1. **手机 WebView 的 origin 是 `https://localhost`，但那不是音源。**
+   那是 Capacitor 把 APK 内 `dist/` 映射出来的虚拟域名，就是 App 自己
+   （`capacitor.config.ts` 的 `hostname: 'localhost'`）。极易被当成「连本机」。
+2. **桌面版和安卓版走两条完全不同的路。**
+   桌面版 Electron 有内嵌后端（`bridge.getNeteasePort()` 给本地随机端口，跑在这台 PC 上）；
+   安卓版没有主进程，走 `VITE_NETEASE_API_BASE` 指向公网。同一个 App 名字，后端不同。
+3. **代码里没有 localhost / 内网回退。**
+   `getConfiguredApiBase()` 读不到环境变量就返回 `null`，`getApiBase()` 直接抛
+   `NETEASE_API_BASE_MISSING`，**不会**静默改连 `127.0.0.1`。连不上会报错而不是串到本机。
+4. **手机和开发 PC 确实在同一网段（`192.168.0.x`），这最容易造成误判** ——
+   局域网只是碰巧同网段，App 里写死的是公网域名，流量真的绕出去。
+5. **自签证书那条路已作废**：`29522998 / ncm.shimoray.com` 是自签，
+   安卓 WebView 不能像 `curl -k` 那样绕过。App 只指向 `29523356`。
+
+#### 文档里给了什么
+
+- 30 秒自证三命令（**前两条本轮实测过**：① `dist/` 里只有 `u2020682.nyat.app`、无 `192.168.0.x`；
+  ② `http=200 tls=0 time=0.787s`；第 ③ 条依据上游 triage playbook 描述，**未实测**已标注）
+- ASCII 拓扑图 + 逐跳链路表 + 各机器职责表（含「在不在链路上」一列）
+- 地址端口一览（含「在哪改」）、两个入口的区别、失效模式表、临时回退内网的 4 步
+- 排障对照表（含 Service Worker 发旧构建这一条，指向 `dev-2026-10-14-fullscreen-padding`）
+- QQ / 酷狗未接的现状
+
+#### 指针
+
+`AGENTS.md`（根）、`docs/dev/AGENTS.md`、`docs/dev/NCM-DEPLOY.md` 三处加了指向，
+并在 NCM-DEPLOY.md 顶部写明「只想确认 App 连哪台机器 / 排查连不上 → 看 NETWORK.md，不用读全文」。
+
+---
+
 ### `dev-2026-10-14-bottom-inset` — 底部标签栏避开手势导航条 + 网易云式迷你播放条
 
 **性质**：BUG fix（点不到标签）+ 新功能（迷你条）。commit `36bd94a7`。

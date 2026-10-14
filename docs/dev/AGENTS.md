@@ -339,6 +339,9 @@ mod 模式也不会被当成未知值。两者结构上可区分。
 | 模组契约类型 | `src/mods/folium/contract.ts` |
 | 上游工作规则 | 根 `AGENTS.md` + `skills/*/SKILL.md`（11 个） |
 | 我们的二开进度 | `docs/dev/CHANGELOG-RELEASE.md` |
+| **安卓版音源走哪台机器（手机不连开发 PC）** | **`docs/dev/NETWORK.md`** |
+| 安卓壳 / 构建 / edge-to-edge | `docs/dev/ANDROID.md` |
+| ncm 与 natfrp 部署步骤 | `docs/dev/NCM-DEPLOY.md` |
 | 用户偏好 | `docs/dev/USER.md` |
 
 ### 上游 skills（11 个，按需加载，别全读）

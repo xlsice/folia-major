@@ -5,7 +5,9 @@
 > Folium 模组扩展点地图、以及一批已实测的坑（切可视化模式只有 Ctrl+K 一条路、
 > tuning 面板在哪个 tab、electron-builder 打包陷阱等）。
 > 配套：[`docs/dev/USER.md`](docs/dev/USER.md)（协作偏好）、
-> [`docs/dev/CHANGELOG-RELEASE.md`](docs/dev/CHANGELOG-RELEASE.md)（二开流水）。
+> [`docs/dev/CHANGELOG-RELEASE.md`](docs/dev/CHANGELOG-RELEASE.md)（二开流水）、
+> [`docs/dev/NETWORK.md`](docs/dev/NETWORK.md)（**安卓版音源网络架构：手机不连开发 PC，
+> 请求发往公网、由笔记本应答** —— 排查音源连通性前先看这个）。
 > 下面的上游内容保持原样，未做任何修改。
 
 本仓库不再把项目规则直接堆在 `AGENTS.md` 中，而是改为按 skill 组织。
