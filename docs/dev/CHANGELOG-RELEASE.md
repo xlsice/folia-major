@@ -8,6 +8,97 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-14-fullscreen-padding` — 真全屏：`insetsHandling` 从 `css` 改成 `disable`
+
+**性质**：BUG fix（一行配置 + 注释重写）。上/左/下三侧白带消失。
+**结论：达成，已真机验证（横竖屏各一次）。**
+
+#### 现象
+
+播放页四周有白带，上、左、下三侧最明显，深色舞台只占中间一块。
+起初怀疑是 App 自己的 letterbox / 缝布局 / `--safe-area-inset-*` 留白 —— **全猜错了**。
+
+#### 真实根因：Capacitor 在 WebView < 140 上给 decorView 加了原生 padding
+
+`node_modules/@capacitor/android/.../plugin/SystemBars.java` 的 `initWindowInsetsListener()`：
+
+```java
+boolean shouldPassthroughInsets =
+    getWebViewMajorVersion() >= WEBVIEW_VERSION_WITH_SAFE_AREA_FIX /* 140 */ && hasViewportCover;
+...
+if (shouldPassthroughInsets) {
+    v.setPadding(0, 0, 0, keyboardVisible ? imeInsets.bottom : 0);   // 透传 inset 给 CSS
+    ...
+} else {
+    v.setPadding(systemBarsInsets.left, systemBarsInsets.top,
+                 systemBarsInsets.right, keyboardVisible ? imeInsets.bottom : systemBarsInsets.bottom);
+    // 并把 CSS 变量强制置零
+    ...setInsets(systemBars() | displayCutout(), Insets.of(0, 0, 0, 0));
+    injectSafeAreaCSS(newInsets);
+}
+```
+
+本机 WebView 是 **138.0.7204.179**（`dumpsys webviewupdate` 实测）**< 140** ⇒ 恒进 `else` 分支：
+**给 decorView 加原生内边距**，再把 `--safe-area-inset-*` 写成 0。
+所以「CSS 侧补救」这条路在这台机器上根本不存在，必须在原生层关掉。
+
+#### 证据链
+
+| 观测 | 值 |
+| --- | --- |
+| 修复前 `innerWidth × innerHeight` | **754 × 305** |
+| 修复前 `screen.width × screen.height` | 795 × 362 |
+| 差值 | **41 / 57 CSS px**（设备 px：左 140、上 140、下 56） |
+| 修复前 `--safe-area-inset-*` | 四项全 `0px` —— 是被强制置零，不是「本来就没有」 |
+| 修复前 canvas rect | `0,0,754,305`（画布本身也跟着视口被缩） |
+| 修复后 竖屏 | `innerW/H` = **361 / 794**，screen = 362 / 795，canvas `0,0,361,794` |
+| 修复后 横屏 | `innerW/H` = **794 / 361**，screen = 795 / 362，canvas `0,0,794,361` |
+| 截图复核 | 横竖屏四条边白像素数：左 0 / 右 1（噪点）/ 下 0；顶部测得的连续白是专辑封面自身亮部，非系统条 |
+
+#### 为什么选 `disable`，而不是升级 WebView
+
+- **不损失任何东西**：`src/` 下对 `safe-area` 的引用是 **0 处**，没有任何固定 UI 靠 inset 变量定位；
+  播放页是整屏可视化舞台，本来就该铺满。
+- **机制可靠**：`insetsHandling: 'disable'` 时 `initWindowInsetsListener()` **第一行就 return**
+  （SystemBars.java:187-189），根本不注册 `setOnApplyWindowInsetsListener`，也就不会有 `setPadding`。
+  targetSdk 36 的强制 edge-to-edge（`EDGE_TO_EDGE_ENFORCED`）本就让 WebView 铺满整屏。
+- **不牵连系统栏隐藏**：`initSystemBars()` 里 `initWindowInsetsListener()` 之后**无条件**执行
+  `setHidden(hidden, "")`（SystemBars.java:144-147），两件事独立，`hidden: true` 照常生效。
+
+#### 代价（如实记录）
+
+关掉 inset 后不再自动避让刘海 / 手势条：本页右下角设置键、右上角返回键会贴到物理边缘。
+实测截图里它们仍在安全范围内（Ace 3 横屏时手势条在底、挖孔在左，与这两个键不重叠），
+但换机型或换方向可能压到 —— 这是全屏播放器的预期取舍，真遇到了再针对具体元素单独加 inset。
+
+#### 更正上一条记录里的错误结论
+
+`dev-2026-10-13-immersive` 写「本机 WebView 138 < 140，走的是 `v.setPadding(0,0,0,0)`
+那条分支 ⇒ 内容天然铺满整屏」—— **方向反了**。138 < 140 恰恰让 `shouldPassthroughInsets`
+为 `false`，走的是**带 inset 的** `setPadding(left, top, right, bottom)`。
+
+同一条记录里「`screen.height = 795` 与 `innerHeight = 754` 差 41px，来源未定，
+但不产生可见空隙」—— 那 41px **就是本次的白带**，不是无害的未知偏差。当时的测试在歌单页做，
+歌单页背景是浅色所以没看出来。
+
+#### 附带记一条：装完 APK「改了配置没生效」多半是 Service Worker 在发旧构建
+
+本轮换公网 API 时踩到：`.env.local` 改了、APK 重装了，App 里点登录仍报
+`NETEASE_API_BASE_MISSING`，而 `import.meta.env` 里明明该有这个变量。
+
+判定（一条就够）：把页面 `document.querySelectorAll('script[src]')` 的文件名，
+拿去和本地 `dist/assets/` 对一遍。**对不上就是 Service Worker 在发旧包**，别再查代码。
+当时页面加载的是 `main-Mz6pRyca.js`，本次构建产出的却是 `main-2xNMJ46a.js`。
+
+修复：CDP 里 `getRegistrations()` 全部 `unregister()` + `caches.keys()` 全部 `delete()`
++ `location.reload()`，再 `adb force-stop` + 重启 App 进程。
+
+⚠️ 改 `capacitor.config.ts` 的 `server.androidScheme`（http↔https）等于**换 origin**，
+新旧 origin 的缓存会并存，`location.reload()` 不一定清得掉，必须重启进程。
+改完记得重新 `adb forward tcp:9222 localabstract:webview_devtools_remote_<新pid>`。
+
+---
+
 ### `dev-2026-10-14-ncm-cloud-frp` — 音源 API 搬到公网常驻（笔记本 + SakuraFRP）
 
 **性质**：功能 + 基础设施。目标：开发 PC 不开机也能在安卓版播网易云。
@@ -193,9 +284,13 @@ frpc 崩溃重启循环。
   **`systemBars()` 同时包含 `statusBars()` 与 `navigationBars()`**，正好一次干掉
   顶部状态栏和底部手势导航小黑/白条，不用分两次配。
 - 隐藏后 `WindowInsetsCompat.getInsets(systemBars|displayCutout)` 归零；本机 WebView
-  **138 < 140**（`WEBVIEW_VERSION_WITH_SAFE_AREA_FIX` 阈值），走的是
-  `initWindowInsetsListener` 里 `v.setPadding(0,0,0,0)` 那条分支 ⇒ 内容**天然铺满整屏**，
-  不需要给固定 UI 元素补 safe-area 内边距。实测 `--safe-area-inset-*` 四个值都是 `0px`。
+  **138 < 140**（`WEBVIEW_VERSION_WITH_SAFE_AREA_FIX` 阈值）。
+
+> 🚨 **本条下面这段推理是错的，已由 `dev-2026-10-14-fullscreen-padding` 更正。**
+> 原文写「138 < 140 ⇒ 走 `v.setPadding(0,0,0,0)` 那条分支 ⇒ 内容天然铺满整屏」——
+> **恰好相反**：`SystemBars.java` 里 `shouldPassthroughInsets = 版本 >= 140 && hasViewportCover`，
+> 版本低于 140 时它是 `false`，走的是**带 inset 的** `setPadding(left, top, right, bottom)`，
+> 会把 WebView 原生内缩。下面那句 `setPadding(0,0,0,0)` 只属于 140+ 的分支。
 
 #### 实测（一加 Ace 3 / Android 16）
 
@@ -205,10 +300,11 @@ frpc 崩溃重启循环。
 | `dumpsys window` | `mWindowingMode=fullscreen`、`EDGE_TO_EDGE_ENFORCED`、`bounds=[0,0][1264,2780]`、`layoutInDisplayCutoutMode=always` |
 | WebView | `innerHeight` 738 → **754**（+16），`--safe-area-inset-top/bottom` 均 `0px`，`html/body padding` 均 `0px` |
 
-⚠️ **一处未解释的观察（如实记录）**：`window.screen.height = 795`，而 `innerHeight = 754`，
-差 41 CSS px；`dumpsys` 的窗口配置写的是 `h794dp`。`html/body` 的 padding 都是 0，
-**截图中内容确实是铺满的**，所以这 41px 不产生可见空隙，但来源未定
-（疑为 cutout 或 WebView 视口计算的已知偏差）。不影响使用，未深究。
+🚨 **此处结论已作废**（见 `dev-2026-10-14-fullscreen-padding`）：
+`window.screen.height = 795` 而 `innerHeight = 754`，差 41 CSS px —— 这 41px
+**不是**「不产生可见空隙的未知偏差」，**就是装饰 View 的原生 padding**，
+在深色播放页上表现为一条明显的白带。当时在歌单页验证，浅色背景把问题盖住了。
+`html/body` 的 padding 为 0 是正常的 —— Capacitor pad 的是原生 decorView，不是 DOM。
 
 #### 已知未做
 
@@ -309,7 +405,7 @@ edge-to-edge 恰恰 8.3.0 才在框架层修好 —— 为躲几行 CSS 而降�
 
 | 文件 | 作用 |
 | --- | --- |
-| `capacitor.config.ts` | Capacitor 配置。`appId` 沿用桌面版 `top.izuna.foliamajor`；WebView 加载 APK 内 `dist/`（`androidScheme: https` + `hostname: localhost`）；内置 `SystemBars` 设 `insetsHandling: 'css'` + `initialViewportFitValueHint: 'cover'` + `style: 'LIGHT'` |
+| `capacitor.config.ts` | Capacitor 配置。`appId` 沿用桌面版 `top.izuna.foliamajor`；WebView 加载 APK 内 `dist/`（`androidScheme: https` + `hostname: localhost`）；内置 `SystemBars` 设 `insetsHandling: 'disable'`（**不是 `'css'`**，见 `dev-2026-10-14-fullscreen-padding`）+ `initialViewportFitValueHint: 'cover'` + `style: 'LIGHT'` + `hidden: true` |
 | `dev/android/stripCdnImportmapPlugin.mjs` | Android 构建时剥离 CDN importmap（见下） |
 | `docs/dev/android-build.ps1` | 构建脚本，固化 JDK/SDK 环境变量陷阱 |
 | `docs/dev/ANDROID.md` | 完整技术方案（缺口清单、实施路线、法律约束） |
@@ -425,8 +521,11 @@ C:\Users\wodes\XLS\APP\Folia-Android\Folia-Android-debug-0.7.18.apk   （归档�
 
 2. **⚠️ 这台机器的 WebView 是 138.0.7204.179（< 140）** —— 正好落在 Capacitor 源码里
    标注 `WEBVIEW_VERSION_WITH_SAFE_AREA_FIX = 140` 的阈值之下。
-   也就是说 **`env(safe-area-inset-*)` 在这台机器上返回的值不可信**，
-   必须靠 `insetsHandling: 'css'` 注入的 `--safe-area-inset-*`。这个配置不是可选项。
+   🚨 **这条的后续结论已被推翻，见 `dev-2026-10-14-fullscreen-padding`。**
+   当时写的是「必须靠 `insetsHandling: 'css'` 注入的 `--safe-area-inset-*`，这个配置不是可选项」。
+   **实际恰好相反**：版本 < 140 时 Capacitor 不走透传分支，而是给 decorView 加原生
+   `setPadding` 并把 CSS 变量强制置零 —— `'css'` 在这台机器上不但没用，还制造了白带。
+   现在配置是 `insetsHandling: 'disable'`（不注册 insets listener，从根上不产生 padding）。
 
 3. **⚠️~~布局完全没适配移动端~~ —— 此结论已被推翻，见上方 `dev-2026-10-13-seam-viewport`。**
    当时据截图判定「上游没有移动端布局、竖排是被压扁的」，**这是误判**：
@@ -449,7 +548,7 @@ C:\Users\wodes\XLS\APP\Folia-Android\Folia-Android-debug-0.7.18.apk   （归档�
 | --- | --- | --- |
 | 🔴 | **后台播放 / 锁屏控制** | 最大缺口。本项目是 `HTMLAudioElement` + Web MediaSession（`src/utils/mediaSessionSync.ts`），**在 WebView 里 MediaSession 完全不生效** ⇒ 锁屏断播、无通知栏控制、耳机按键无响应、无音频焦点处理。必须写原生 Media3/ExoPlayer + `MediaSessionService` 前台服务。官方示范仓库也没做（Manifest 只有 `INTERNET` 一个权限） |
 | 🔴 | **音源后端** | 酷狗/QQ/网易云是 Node 服务，WebView 跑不了。需部署 `deploy/docker/` 或 Vercel/Cloudflare，App 用 `VITE_*_API_BASE` 指向 |
-| 🟠 | **edge-to-edge inset CSS** | `insetsHandling: 'css'` 已配好并会注入 `--safe-area-inset-*`，但**具体哪些固定 UI 元素要加 inset 需真机验证后再改**。`src/` 目前 `safe-area` 零命中。不盲改，避免破坏桌面布局 |
+| ✅ | **edge-to-edge inset CSS** | **已解决（2026-10-14）**：`insetsHandling` 改 `'disable'`，装饰 View 不再被原生 padding，横竖屏四边零白带。见 `dev-2026-10-14-fullscreen-padding`。`src/` 对 `safe-area` 仍是零命中，所以没有任何 UI 需要补 inset |
 | 🟠 | **本地音乐库** | 依赖 `showDirectoryPicker`（File System Access API），Android WebView 不实现 ⇒ 目录授权/整库扫描/封面全失效 |
 | 🟡 | **16 KB page size** | Capacitor 壳无预编译 `.so`；侧载不查，但日后上架要验 |
 | 🟡 | **visualizer 按需加载** | 183 个 visualizer 模块（含 three.js）被 `registry.tsx` eager 拉入，移动 GPU 上首屏与发热待实测 |

@@ -299,6 +299,19 @@ targetSdk 36 下 WebView 一定画到状态栏和导航栏底下，必须处理 
 > 在 Android 16 上已经是 no-op**（依赖的 opt-out 通道被删了）。照抄那段配置在 Android 16
 > 设备上不起作用，要改用 SystemBars + CSS 变量。
 
+> 🚨 **上面第 2 条建议已被真机实测推翻（2026-10-14），不要再照它做。**
+> 「CSS 用注入变量优先、`env()` 兜底」的前提是 `insetsHandling: 'css'` 真的会把 inset
+> 注入成 CSS 变量。实测**不成立**：本机 WebView 是 138.0.7204.179，低于 Capacitor 源码里
+> `WEBVIEW_VERSION_WITH_SAFE_AREA_FIX = 140` 的阈值，于是 `SystemBars.java` 的
+> `initWindowInsetsListener()` 走 `else` 分支，给 decorView 加原生 `setPadding`，
+> **再把 `--safe-area-inset-*` 强制写成 0**。也就是说 `'css'` 在 WebView < 140 上
+> 既没给出真实 inset，又额外制造了 padding（播放页三侧白带）。
+>
+> 本项目最终做法：`insetsHandling: 'disable'`（listener 根本不注册 ⇒ 无 padding），
+> 配合 targetSdk 36 的强制 edge-to-edge 得到真全屏。因为 `src/` 对 `safe-area` 零命中，
+> 没有任何固定 UI 需要 inset，所以关掉是零代价。
+> 完整证据与取舍见 `CHANGELOG-RELEASE.md` 的 `dev-2026-10-14-fullscreen-padding`。
+
 ### 5. 🟠 WebGL 性能与包体
 
 - 14 个内建可视化模式，183 个 visualizer 模块，含 `three.js` / `pixi.js` / `@react-three/*`

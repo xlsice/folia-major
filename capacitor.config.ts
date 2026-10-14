@@ -41,11 +41,36 @@ const config: CapacitorConfig = {
     // Capacitor 8 内置的 SystemBars（不需要额外安装插件）。
     // targetSdk 36 下 Android 15/16 强制 edge-to-edge，且 Android 16 已删除
     // windowOptOutEdgeToEdgeEnforcement 退避开关，没有出口。
-    // insetsHandling: 'css' 让框架用 WindowInsetsCompat 读真实 inset 并注入
-    // --safe-area-inset-* 变量 —— 这一步绕开了 Android WebView < 140 上
-    // env(safe-area-inset-*) 返回错误值的已知 bug，必须靠它而不是只靠 env()。
+    //
+    // insetsHandling: 'disable' —— 2026-10-14 实测后改。
+    //
+    // 为什么不能用 'css'（本文件之前写的就是它，注释里的理由是错的）：
+    // Capacitor 内置 SystemBars.java 的 initWindowInsetsListener() 里
+    //   shouldPassthroughInsets = getWebViewMajorVersion() >= 140 && hasViewportCover
+    // 本机 WebView 是 138.0.7204.179（dumpsys webviewupdate 实测），低于 140，
+    // 于是永远走不到那条「setPadding(0,0,0,0) + 把 inset 注入 --safe-area-inset-*」的分支，
+    // 而是落到 fallback：
+    //   v.setPadding(systemBarsInsets.left, top, right, bottom);   // 给 decorView 加原生内边距
+    //   ...setInsets(systemBars|displayCutout, Insets.of(0,0,0,0)); // 再故意把 CSS 变量写成 0
+    // 实测后果：WebView 视口 754x305，而屏幕是 795x362 —— 左边被缩掉 140px、
+    // 上面 140px、下面 56px，露出的 decorView 背景是白的，三侧各一条白带；
+    // 同时 --safe-area-inset-* 恒为 0（那是被强制置零的，不是「没有 inset」）。
+    // 也就是说 'css' 在 WebView < 140 上不但没起到作用，反而制造了 padding，
+    // CSS 侧无法补救 —— 必须在原生层关掉。
+    //
+    // 'disable' 的效果：initWindowInsetsListener() 直接 return，不再给 decorView
+    // 加 padding。targetSdk 36 的强制 edge-to-edge 本来就让 WebView 铺满整屏，
+    // 于是内容真正全屏，正是播放器要的效果。
+    //
+    // 为什么关掉 inset 不会破坏布局：本仓库 src/ 下对 safe-area 的引用为 0 处，
+    // 没有任何一个固定 UI 元素靠 inset 变量定位；播放页是整屏可视化舞台，
+    // 本来就要铺满。代价是刘海/手势条区域下方的固定按钮（设置、进度条）可能被
+    // 系统栏压住一点，这是全屏播放器的预期取舍。日后 WebView 升到 140+，
+    // 'css' 才会真的生效，但本应用仍应保持 'disable'。
     SystemBars: {
-      insetsHandling: 'css',
+      insetsHandling: 'disable',
+      // 保留 viewport-fit=cover（index.html 里也有）：WebView ≥140 时
+      // env(safe-area-inset-*) 才能给出真实值，留着没有副作用。
       initialViewportFitValueHint: 'cover',
       // 浅色图标配深色底（Folia 主题底色 #09090b 为近黑）。
       // 隐藏时这个图标明暗无意义，但保留一个明确值避免落到 DEFAULT 走主题推断。
@@ -54,9 +79,12 @@ const config: CapacitorConfig = {
       // Capacitor 内置 SystemBars 的 hidden → WindowInsetsControllerCompat
       // .hide(Type.systemBars())，systemBars 同时含 statusBars 与 navigationBars，
       // 正好是「状态栏 + 底部小黑/白条」一起消失。
-      // 隐藏后 WindowInsetsCompat.getInsets(systemBars) 归零：本机 WebView 138 < 140
-      // 走的是 SystemBars.java 里 setPadding(0,0,0,0) 那条分支，内容因此天然铺满整屏，
-      // 不需要给固定 UI 元素补 safe-area 内边距。
+      //
+      // hidden 与 insetsHandling 是两件独立的事：SystemBars.java 的 initSystemBars()
+      // 里 initWindowInsetsListener() 之后无条件执行 setHidden(hidden, "")，
+      // 所以把 insetsHandling 改成 'disable' 不会让系统栏重新冒出来。
+      // 注意 handleOnConfigurationChanged() 只重新 setStyle、不重新 setHidden，
+      // 旋转屏幕后若系统栏被唤出需要重进 App 才会再次隐藏。
       hidden: true,
     },
   },
