@@ -18,17 +18,18 @@ const config: CapacitorConfig = {
   server: {
     // 加载打进 APK 的本地 dist/，不走远程站点。
     //
-    // androidScheme 用 http（不是 https）：音源 API 只能跑在局域网/内网的明文 HTTP 上，
-    // 而 https 页面去请求 http:// 属混合内容，会被 Chromium 直接拦掉（实测 WebView 里
-    // fetch http://192.168.0.104:3000 报 "TypeError: Failed to fetch"）。
-    // http://localhost 仍被 Chromium 视为 secure context（localhost 是特例），所以
-    // Service Worker / vite-plugin-pwa 不受影响，https 独有用到的 File System Access API
-    // （本地音乐库）在 Android 本来就不可用，不构成损失。
-    androidScheme: 'http',
+    // androidScheme 用 https（2026-10-14 从 http 切回）：音源 API 已迁到公网
+    // https://api.u2020682.nyat.app:18329（笔记本常驻 ncm + SakuraFRP TCP 隧道
+    // #29523356，natfrp 为 *.u2020682.nyat.app 签发的是可信 CA 证书，
+    // curl 实测 ssl_verify_result=0，不是自签），所以不必再为了明文 HTTP 降级 scheme。
+    // 顺带说明：http://localhost 本来就被 Chromium 当 secure context，
+    // 所以切 https 之后 Service Worker / vite-plugin-pwa 只会更稳，不会有回归。
+    androidScheme: 'https',
     hostname: 'localhost',
-    // 与上面的 http scheme 配套：manifest 需要 usesCleartextTraffic 放行明文请求，
-    // 否则 WebView 仍会在网络层拦掉对音源 API 的请求。
-    cleartext: true,
+    // 不再需要放行明文：音源 API 是可信 HTTPS，WebView 默认策略即可。
+    // 如果要临时切回内网 http://<笔记本IP>:3000 调试，把这里改回 true，
+    // 并恢复 android/app/src/main/AndroidManifest.xml 里的 networkSecurityConfig。
+    cleartext: false,
   },
   plugins: {
     SplashScreen: {

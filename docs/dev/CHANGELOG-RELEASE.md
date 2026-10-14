@@ -8,6 +8,100 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-14-ncm-cloud-frp` — 音源 API 搬到公网常驻（笔记本 + SakuraFRP）
+
+**性质**：功能 + 基础设施。目标：开发 PC 不开机也能在安卓版播网易云。
+**结论：达成。** 公网入口 `https://api.u2020682.nyat.app:18329`（可信证书，curl 实测 `tls=0`）。
+
+#### 最终形态
+
+| 项 | 值 |
+| --- | --- |
+| 服务端 | 笔记本 `192.168.0.109`，ncm v4.41.1，计划任务 `LianYinSu-NCM-API`（SYSTEM / AtStartup）监听 `:::3000` |
+| 穿透 | SakuraFRP 隧道 **`29523356` / `Folia_NCM_Api`**，类型 **TCP**，远程端口 **18329**，节点 `#3 [VIP]香港特别行政区1` |
+| 子域 | `api.u2020682.nyat.app`（natfrp 免费 UID 子域 `u2020682.nyat.app` 的第一段前缀 `api`） |
+| 公网入口 | **`https://api.u2020682.nyat.app:18329`** |
+| frpc 守护 | 计划任务 `LianYinSu-SakuraFRP`，`C:\lianyinsu\scripts\start-frpc.ps1` 的 `$ids` 数组 |
+
+#### 改动（3 处，回退局域网方案）
+
+| 文件 | 改动 |
+| --- | --- |
+| `.env.local` | `VITE_NETEASE_API_BASE` → `https://api.u2020682.nyat.app:18329`（不入库） |
+| `capacitor.config.ts` | `server.androidScheme` `http` → **`https`**，`cleartext` `true` → **`false`** |
+| `android/app/src/main/AndroidManifest.xml` | 移除 `android:networkSecurityConfig` |
+| `android/app/src/main/res/xml/network_security_config.xml` | **删除** |
+| `docs/dev/NCM-DEPLOY.md` | 重写：把 natfrp 方案从「不解决根本问题」改成「当前采用」，并写清证书那一堆坑 |
+
+#### 证书：三段弯路（这是本次最贵的部分）
+
+1. **natfrp 不为自定义域名签发可信证书。**
+   建 HTTPS 建站隧道 + Cloudflare CNAME（`ncm.shimoray.com` → `frp-add.com`），
+   `curl -k` 能返回 200，但 frpc 日志明写「当前证书: frpc 自动生成」= **自签**。
+   `claw.shimoray.com` 同样自签（两处都 `SEC_E_UNTRUSTED_ROOT`）。
+   **安卓 WebView 不能像 `curl -k` 那样绕过**，所以自定义域名这条路直接作废。
+2. **官方文档给的正路是免费子域。**
+   `doc.natfrp.com/bestpractice/domain-bind.html`：「SakuraFrp 为所有用户提供免费的
+   `nyat.app` 子域和 SSL 证书」。申请到 `u2020682.nyat.app`（UID 前缀，不可改）。
+   子域绑定只能选**预设单词**（`ncm` 不在词库，会提示「暂不支持该单词」），
+   候选有 `nas / map / api / panel / alist / ai / static / assets…`，选了 `api`。
+3. **但 `nyat.app` 子域不能填进 HTTPS 建站隧道。**
+   创建时报错原文：
+   > Nyat APP 域名不可直接用于 HTTP(S) 隧道中, 用于建站请先创建 TCP 隧道,
+   > 在子域绑定页面将域名绑定到 TCP 隧道, 然后使用 `https://<子域名>:远程端口` 进行访问
+
+   ⇒ 正解是 **TCP 隧道 + 子域绑定 + 边缘按 SNI 收 TLS**，地址必须带远程端口。
+
+另外一个结构性问题：**一条隧道只能有一个连接地址。**
+已绑 `ncm.shimoray.com` 的 `29522998 / Folia_NCM` 不会出现在子域绑定候选列表里，
+所以只能另建隧道，而不是复用。`29522998` 目前保留但**不要**把 App 指过去（自签）。
+
+#### 实测
+
+| 证据 | 值 |
+| --- | --- |
+| DNS | `api.u2020682.nyat.app` → CNAME `frp-add.com` → A `43.225.47.70` |
+| frpc 日志 | `已从服务器为 api.u2020682.nyat.app 加载证书 [CN = *.u2020682.nyat.app, 2026-10-14 - 2027-01-12]` + `TCP 隧道启动成功` |
+| curl（**不加 `-k`**） | `HTTP=200 tls=0`，body `{"data":{"code":200,"account":null,"profile":null}}`，1.45s |
+| 本机任务 | `LianYinSu-NCM-API` / `LianYinSu-SakuraFRP` 均 Running，`frpc_processes = 1`，error log 空 |
+
+`tls=0`（Schannel `ssl_verify_result`）是「证书链可信」的关键证据。
+本机有 `HTTP_PROXY` 环境变量，测公网必须带 `curl --noproxy '*'`，否则走代理结果不可信。
+
+#### 踩到的坑：BOM 事故的真实根因（更正旧记录）
+
+事故经过：`add-tunnel-id.ps1` 改 `start-frpc.ps1` 的 `$ids` 后，**6 条隧道同时掉线**，
+frpc 崩溃重启循环。
+
+- ❌ 旧记录（`fix-frpc-ids.ps1` 注释里）写的根因是「原文件是 GBK/ANSI 编码」。
+  **这是错的。**
+- ✅ 实测根因（脚本里 `has_utf8_bom = True` 可以自证）：
+  `start-frpc.ps1` **本来就是 UTF-8 带 BOM**。出事的那版脚本用
+  `ReadAllText($p, UTF8)` 读（正确），却用
+  `WriteAllText($p, $text)`（**默认 UTF-8 无 BOM**）写回 → **BOM 被丢掉**。
+  PowerShell 5.1 对无 BOM 的 .ps1 一律按 ANSI(GBK) 解释，
+  UTF-8 的中文注释字节被当成 GBK 双字节，字数错位把 `$dir` / `$exe` 那几行的引号吃掉，
+  `Start-Process -FilePath $exe` 拿到 `$null` → 崩溃循环 → 全线掉线。
+
+**正确做法**：目标行是纯 ASCII，用 ISO-8859-1（28591）做「字节 ↔ 字符」一一对应往返，
+非 ASCII 字节原样通过，只替换 `$ids` 那一行，其余字节一个不动。
+写在 `docs/dev/.tmp/add-id-29523356.ps1` 里（本次实际用的就是它，没再出事）。
+顺带记一条：**改既有含中文的 `.ps1` 时，纯 ASCII 行的替换优先走 Latin-1 字节往返，
+不要走「读成字符串再写回去」。**
+
+#### 已知限制（如实记录）
+
+- ⚠️ **现在整条链路依赖笔记本常开**。笔记本关机/休眠/拔网线 → App 直接播不出来。
+  跟以前「开发 PC 关机」是同一个问题，只是换了个机器。真要 7×24 得再上云厂商（Vercel/SCF）。
+- **公网入口没有访问密码**，拿到地址的人都能调这个 ncm 实例。
+- **端口 18329 是 natfrp 分配的**，删隧道重建会换端口，`.env.local` 要同步改并重装 APK。
+- 香港1 节点日志提示「处于超载运行状态」，体验可能受影响。
+- **只配了网易云**。`VITE_QQ_API_BASE` / `VITE_KUGOU_API_BASE` 仍未配置。
+- **可能触发网易云风控**：出口 IP 从开发 PC 变成香港节点。真遇到只能重新扫码。
+- 后台播放（锁屏断播）仍未做。
+
+---
+
 ### `dev-2026-10-13-playback-lan` — 打通播放：网易云二维码登录可用（局域网方案）
 
 **性质**：功能。按用户选择，当前先用**局域网直连**验证可行性，长期方案（natfrp/Vercel）待定。
