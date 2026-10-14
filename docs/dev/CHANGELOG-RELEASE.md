@@ -8,6 +8,98 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-14-bottom-inset` — 底部标签栏避开手势导航条 + 网易云式迷你播放条
+
+**性质**：BUG fix（点不到标签）+ 新功能（迷你条）。commit `36bd94a7`。
+**结论：达成，已真机验证。**
+
+#### 现象
+
+用户报：「下面的『在线/本地/专辑/远程』距离屏幕底部太近了，我点它们实际上是手势导航的
+黑、白条在响应。」
+
+#### 根因：上一轮「真全屏」决定的代价
+
+`capacitor.config.ts` 的 `SystemBars.insetsHandling = 'disable'` 是为了真全屏
+（本机 WebView 138.x < Capacitor 判定修复的 140，用 `'css'` 会给 decorView 加原生
+padding，露出的 decorView 背景是白的，三侧白带）。**代价是拿不到真实 inset**：
+
+| 变量 | 实测值 |
+| --- | --- |
+| `env(safe-area-inset-top)` | **40**（非 0） |
+| `env(safe-area-inset-bottom)` | **0** ← 只有底部是 0 |
+| `--nt-inset-*`（修复前） | 全空 |
+| `nav.bottom` vs `innerHeight` | 794.29 vs 794 → 空隙 **-0.3px**（完全贴死） |
+
+#### 参考值来自真机实测，不是估计
+
+用户手机里装了网易云（`com.netease.cloudmusic`），用 `uiautomator dump` 量到真实几何：
+
+```
+tab 容器      y=2535..2724   h=54 dp
+  可点区      y=2535..2712   h=50.6 dp      ← 首页/搜索/笔记/我的，各占 1/4 宽
+  图标+文字   y=2576..2652   h=21.7 dp
+手势导航条    y=2724..2780   h=16 dp       ← 完全独立的系统层
+```
+
+Android 侧独立佐证：`dumpsys window` 显示
+`InsetsSource type=navigationBars frame=[0,2724][1264,2780]`、`bottom=56px @ density 560 = 16dp`。
+**两个来源互相印证**，不是猜的。
+
+#### 做法
+
+新增 `android/app/src/main/java/top/izuna/foliamajor/SafeInsetsPlugin.java`：
+用 `WindowInsetsCompat` 读真实 inset，注入成 `--nt-inset-*` CSS 变量，
+**不碰 decorView 的 padding**（WebView 仍然全屏，只是多了几个变量）。
+
+前端 `src/library/suites/netease/useSafeInsets.ts` 读变量 + `MutationObserver` 监听，
+并主动 `pullFromNative()` 兜底（防注入时机早于页面加载）。
+
+### 🔑 关键坑：隐藏态下 inset 的 bottom 本来就是 0
+
+本应用设了 `SystemBars.hidden = true`，系统导航条被 `WindowInsetsController` 隐藏后，
+`getInsets(navigationBars)` 返回 **bottom = 0**（实测 `getInsets()` → `{left:0, top:40, right:0, bottom:0}`），
+**但手势条在屏幕上仍然占着 16dp，照样吃掉点击。**
+
+> **拿不到 inset ≠ 那一块没人占。**
+
+所以插件里加了 `fallbackGestureDp()`：读 `com.android.internal` 的
+`config_navBarInteractionMode`（2 = 手势 → 至少留 16dp；0 = 三键 → 留 0），
+拿不到时按手势处理。
+
+### ⛔ 另一个坑：`s.setProperty` 传整串 = 什么都没设
+
+第一版把 `"--nt-inset-left:0px;--nt-inset-bottom:16px"` 整串传进 `setProperty()`，
+被当成**单个属性名**，静默无效——而 logcat 照样打印 `injected`，看着像成功了。
+**必须逐条 `setProperty(name, value)`。** 这次是「前端读到空 + 日志说成功」两边对不上才定位到的。
+
+#### 实测结果（真机，一加 Ace 3 / Android 16 / 视口 361×794）
+
+| 指标 | 网易云 | Folia 修复后 |
+| --- | --- | --- |
+| tab 栏高度 | 54 dp | **54 dp** ✅ |
+| tab 底边位置 | 774.9 dp | **778.3 dp** ✅ |
+| 手势区留白 | 19.4 dp | **15.7 dp** ✅ |
+| 注入变量 | — | `{left:0px, top:40px, right:0px, bottom:16px}` |
+| 四标签点击 | 正常 | **正常**（`aria-current` 正确切换） |
+
+logcat 双路径确认：CSS 变量注入 + 前端 `getInsets` 主动拉取都通。
+
+#### 顺带做的：网易云式迷你播放条
+
+贴在 tab 栏正上方：40dp 圆角小方块封面 + 歌名/歌手 + 播放/暂停 + 队列键，整条可点进播放页。
+tab 标签也补了图标（文字在上、图标在下，同网易云）。
+
+#### 已知未做
+
+- 迷你条是**静态外观**：`onTogglePlayback` 已接，但**没接真实的 `isPlaying` 状态**
+  （契约的 home props 里没有这个字段），播放/暂停图标恒为「播放」。
+  → 要真图标需要读 `usePlaybackStore`，下一轮做。
+- 迷你条右侧「队列」按钮目前只弹提示，没接真实队列面板。
+- collection / artist 页没有固定底栏，不受本次 inset 影响。
+
+---
+
 ### `dev-2026-10-14-netease-suite` — 新增第四套 library suite：网易云手机版布局
 
 **性质**：新功能（新增一套 suite，原三套零改动）。commit `b1b65d7a`。
