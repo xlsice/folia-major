@@ -206,6 +206,7 @@
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.5.3",
     "@capacitor/splash-screen": "^8.0.2",
     "@google/genai": "^2.24.0",

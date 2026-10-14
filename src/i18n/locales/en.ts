@@ -415,6 +415,7 @@ export default {
     "stageActionUnavailable": "This action is unavailable in Stage mode",
     "latticeUnavailableInFm": "Lattice does not support Personal FM mode",
     "latticeFmOpenedInPlayer": "Lattice does not support Personal FM mode. Opened the standard player instead",
+    "exitPressAgain": "Press back again to exit Folia",
     "noPlayableSongs": "No playable songs in this list",
     "songUnavailableTag": "Unavailable",
     "queueShuffled": "Queue shuffled",

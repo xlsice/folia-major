@@ -246,6 +246,44 @@ npm run codemap            # 生成 CODEMAP.md
 
 > 以下每一条都是**本机实测踩过**的，不是推测。
 
+### ⛔ Capacitor 8 的安卓壳**完全不做返回键桥接**
+
+`BridgeActivity` 里没有 `onBackPressed` / `OnBackPressed`（38 个桥接类全搜过，0 命中），
+`package.json` 也没有 `@capacitor/app`。所以系统返回键走 **Activity 默认行为 = finish()**，
+**与 Folia 压了多少层 history 无关** —— 会表现为「不管在哪个界面按返回都回桌面」。
+
+真机复现（`dumpsys activity activities`）：按 `keyevent 4` 后
+`Task{... A=top.izuna.foliamajor}` 整条消失，`mCurrentFocus` 变 `com.android.launcher`。
+
+修法见 `docs/dev/CHANGELOG-RELEASE.md` 的 `dev-2026-10-14-android-back-button`：
+分层返回仲裁器 `src/navigation/back/`。**关键是别写一行 `history.back()`** ——
+命令面板/设置/搜索这些浮层根本不压 history 记录，直接 back 会穿透到下层界面。
+
+### ⛔ 装了 `@capacitor/app` 就等于接管了返回键，哪怕你不注册 listener
+
+`AppPlugin.load()` 无条件注册 `OnBackPressedCallback`，其逻辑是：
+
+```java
+if (!hasListeners("backButton")) { if (canGoBack) goBack(); }   // 能退就退，不能退就无反应
+else { notifyListeners("backButton", {canGoBack}, true); }      // 必须由 JS 自己决定退哪层
+```
+
+推论：**「只装不接」会得到一个"按返回没反应"的壳**（不是回桌面，是完全没反应）。
+注册 listener 后退出 App 必须显式调 `App.exitApp()`（内部是 `getActivity().finish()`）。
+
+⚠️ `@capacitor/app` 的版本号与 `@capacitor/core` **故意不同步**：app 停在 8.1.2、
+core 是 8.5.3，peer 是 `>=8.0.0`。看到不一致不用慌，这是官方 dist-tags 的常态
+（`latest-7` 是 7.1.2、`latest-6` 是 6.0.3）。
+
+### ⛔ 诊断脚本的同名守卫变量会互相屏蔽
+
+写 CDP 探针时用 `window.__probeInstalled` 当「装过了吗」的守卫，结果第二个探针
+因为看到 true 就不再注册 listener，计数永远 0 —— 一度误判成
+「`history.back()` 在 Android WebView 里不触发 popstate」。真实现象是 popstate 正常。
+
+**探针变量名要按用途分前缀**（`__bk` / `__probeXxx`），并且每次都把计数暴露出来，
+不要依赖别的脚本是否装过。
+
 ### ⛔ 切换可视化模式只有一条路：Ctrl+K 命令面板
 
 设置页里**没有**模式切换列表。别在设置里翻。路径是：

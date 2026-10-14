@@ -8,6 +8,99 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-14-android-back-button` — 修安卓返回键直接回桌面：加一层返回仲裁
+
+**性质**：BUG fix（安卓端功能缺失）。结论：达成，四层全部真机验证。
+
+用户报「不管在哪个界面按返回都回桌面，而不是返回上一级」。
+
+#### 1. 根因：不是导航栈坏了，是没人接这个键
+
+Folia 的应用内导航栈本来是完整的（`useAppNavigation` 有 `pushState` + `appHistoryIndex`
++ `popstate` 恢复 + 集合栈跳层），但**没有任何一层碰过系统返回键**。
+
+| 取证 | 结果 |
+| --- | --- |
+| `package.json` 搜 `@capacitor` | 只有 core / android / cli / splash-screen，**没有 `@capacitor/app`** |
+| 全仓搜 `backButton` / `App.addListener` | **0 命中** |
+| `BridgeActivity.java` 搜 `onBackPressed` | **0 命中**（38 个桥接类全搜过） |
+| 真机 `dumpsys activity` | 启动后 `Task{#3439 A=top.izuna.foliamajor visible=true}` → 按 `keyevent 4` → Task 消失，`mCurrentFocus` 变 `com.android.launcher` |
+
+即：**Capacitor 8 的 Android 壳完全不做返回键桥接**，Activity 默认行为就是 `finish()`，
+与 Folia 压了多少层 history 无关。
+
+⚠️ 读 `AppPlugin.java` 时还发现一个必须知道的副作用：装了 `@capacitor/app` 之后
+`load()` 就注册了 `OnBackPressedCallback`，即使**不注册 listener** 返回键行为也从
+「直接 finish」变成「能退就退、不能退就无反应」。所以「只装不接」会得到一个
+"按返回没反应"的壳 —— 这条已写进 `nativeBackBridge.ts` 的注释。
+
+#### 2. 为什么不能直接 `window.history.back()`
+
+Folia 的 history 记录与 UI 层级**不一一对应**：
+
+- 命令面板 / 设置 / 搜索浮层**根本不压 history 记录** → 直接 back 会穿透到下层界面；
+- suite 自己的面板记录又被 `findLayerBaseIndex` 归为「同一层」。
+
+所以做成分层仲裁，而不是一行 back()。
+
+#### 3. 变更
+
+新增 `src/navigation/back/`（纯逻辑可单测 + 原生桥接 + React 接入）：
+
+| 文件 | 职责 |
+| --- | --- |
+| `backCoordinator.ts` | 有序注册表，**纯逻辑不碰 DOM/window/Capacitor**。优先级 `overlay → suite → collection → view → app`，同优先级 LIFO |
+| `nativeBackBridge.ts` | 全项目唯一 `import '@capacitor/app'` 的地方。两道闸隔离平台：`VITE_ANDROID_BUILD` + `Capacitor.isNativePlatform()` |
+| `useBackCoordinator.ts` | 在 App.tsx 注册各层；store 类（设置/搜索/集合）直接读 store，React state 类（命令面板）由 App.tsx 注入 |
+
+挂载点选在 `App.tsx` —— 它是全项目唯一同时持有 `useAppNavigation()` 的导航能力、
+命令面板开关、以及各 store 的地方，注册一次就覆盖全部层，不必把注册散进各浮层组件。
+
+- `src/App.tsx`：加 1 行 import + 1 处 hook 调用
+- `src/i18n/locales/{zh-CN,en,in}.ts`：加 `status.exitPressAgain`
+- `package.json`：`@capacitor/app@^8.1.2`
+- `test/unit/navigation/back/backCoordinator.test.ts`：12 条单测
+
+**根页面行为 = 再按一次退出**（2000ms 窗口）。且**任何一层被成功消费都会解除退出待命**，
+否则「提示 → 退回一层 → 再按返回」会直接退出 App。
+
+#### 4. 验证
+
+真机（一加 Ace 3 / Android 16），逐层实测，**全部通过**：
+
+| 层 | 场景 | 结果 |
+| --- | --- | --- |
+| collection | 点开「每日推荐」歌单卡 → 返回 | hash `#collection/…` → `""`，`stateIndex` 1→0，popstate 触发 1 次，首页 4 张卡恢复，**无退出提示** |
+| view (player) | 启动落在 `#player` → 返回 | hash `#player` → `""`，首页歌单列表恢复，**App 未退出** |
+| overlay | 播放页打开设置 → 返回 | 设置标记词 5→0（设置关闭），`hash` 仍是 `#player`（留在播放页），**App 未退出** |
+| app | 首页连续按两次返回 | 第一次 toast「再按一次返回键退出 Folia」，第二次 → `mCurrentFocus=com.android.launcher` |
+
+另有：12 条单测全绿、`npm run typecheck` exit 0、APK 装机后 `lastUpdateTime`
+（22:43:15）晚于 APK `LastWriteTime`（22:42:56）。
+
+**尚未验证**：web / Electron 构建产物零影响（靠 `isNativeShell()` 逻辑短路，
+非实测）；Escape 键未统一（见下）。
+
+#### 5. 踩坑
+
+- **⚠️ 装机后必须清 Service Worker，否则测的是旧 chunk**。本次实测到设备跑
+  `main-DcCqNVJh.js` 而本地只有 `main-vixJ6abm.js` —— SW 在发旧包。
+  判定：把页面 `script[src]` 与本地 `dist/assets/` 对一遍，对不上就是旧包。
+- **⚠️ `@capacitor/app` 的版本号与 `@capacitor/core` 故意不同步**（app 停在 8.1.2，
+  core 是 8.5.3），peer 是 `>=8.0.0`。看到版本不一致不用慌，这是官方 dist-tags 的常态
+  （`latest-7` 是 7.1.2、`latest-6` 是 6.0.3）。
+- **⚠️ 诊断脚本的探针变量名撞车，差点误判成「popstate 在 WebView 里不触发」**：
+  两个脚本都用 `window.__probeInstalled` 当守卫，第二个因为看到 true 就不再注册
+  listener，计数永远是 0。真实现象是 popstate 正常。**同名守卫变量要按用途分前缀。**
+
+#### 6. 已知未做（阶段二）
+
+现状 **Escape 有 20+ 处分散的组件级监听**（`CommandPalette` / `SettingsModal` /
+`SearchWorkspace` / `bravais` 的 `resolveEscapeStep` 六级阶梯 / tui / grid 各自一套），
+与返回键各走一套，行为会不一致。阶段二让 Esc 派发同一个「虚拟返回」进仲裁器、
+组件级监听逐步退役 —— 那是另一个量级的工程，本轮没做，也没动那 20+ 个文件。
+
+
 ### `dev-2026-10-14-audio-fast-track` — 修「吃不到一加杜比音效」：AudioContext 走了 FastMixer 快线程
 
 **性质**：修 bug。结论：达成，已真机验证。

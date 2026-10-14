@@ -71,6 +71,7 @@ import { consumeProgrammaticPause, playbackFade } from './services/playbackFade'
 import { getSongArtistLabel, getSongCoverUrl } from './services/onlineMusic/songMetadata';
 import { isNavidromeEnabled } from './services/navidromeService';
 import { useAppNavigation } from './hooks/useAppNavigation';
+import { useBackCoordinator } from './navigation/back/useBackCoordinator';
 import { useNeteaseLibrary } from './hooks/useNeteaseLibrary';
 import { useKugouLibrary } from './hooks/useKugouLibrary';
 import { useQqLibrary } from './hooks/useQqLibrary';
@@ -1870,6 +1871,18 @@ export default function App() {
         }
         return BASE_DUAL_THEME;
     }, [bgMode, customTheme, aiTheme]);
+
+    // Android 系统返回键：Capacitor 8 的壳本身不接这个键（实测按返回直接 finish 回桌面），
+    // 这里把「退一级」的各层串成一条有序仲裁：浮层 → 集合栈 → 播放/网格视图 → 再按一次退出。
+    // 非原生壳（网页版 / Electron）内部直接短路，桌面行为不受影响。
+    useBackCoordinator({
+        isCommandPaletteOpen: commandPalette.isOpen,
+        closeCommandPalette: commandPalette.close,
+        view: currentView,
+        backCollection,
+        backFromPlayer: navigateBackFromPlayer,
+        backFromLattice: navigateBackFromLattice,
+    });
 
     // Built while the overlay is open even outside dev, because the packaged desktop build has no
     // console of its own and this overlay is the only way to read one. Still gated rather than

@@ -413,6 +413,7 @@ export default {
     "stageActionUnavailable": "Aksi ini tidak tersedia di mode Stage",
     "latticeUnavailableInFm": "Lattice tidak mendukung mode Personal FM",
     "latticeFmOpenedInPlayer": "Lattice tidak mendukung mode Personal FM. Pemutar standar dibuka sebagai gantinya",
+    "exitPressAgain": "Tekan kembali untuk keluar dari Folia",
     "noPlayableSongs": "Tidak ada lagu yang bisa diputar di daftar ini",
     "songUnavailableTag": "Tidak Tersedia",
     "queueShuffled": "Antrean diacak",
