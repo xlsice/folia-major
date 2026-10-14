@@ -50,7 +50,8 @@ public class SafeInsetsPlugin extends Plugin {
             if (insets == null) return;
             Insets bars = insets.getInsets(
                     WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
-            inject(bars.left, bars.top, bars.right, bars.bottom);
+            Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
+            inject(bars.left, bars.top, bars.right, bars.bottom, ime.bottom);
         }, 1200);
     }
 
@@ -59,15 +60,20 @@ public class SafeInsetsPlugin extends Plugin {
             Insets bars = windowInsets.getInsets(
                     WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
             Insets ime = windowInsets.getInsets(WindowInsetsCompat.Type.ime());
-            inject(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
+            inject(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom), ime.bottom);
             // 原样返回，不消费：系统栏隐藏状态与其它插件的行为都不受影响。
             return windowInsets;
         });
         ViewCompat.requestApplyInsets(decorView);
     }
 
-    /** 把四个 inset 写进 WebView 的 CSS 变量，供前端 --nt-inset-bottom 等直接取用。 */
-    private void inject(int left, int top, int right, int bottom) {
+    /**
+     * 把 inset 写进 WebView 的 CSS 变量，供前端 --nt-inset-bottom 等直接取用。
+     *
+     * @param keyboard IME（软键盘）高度，**不能**拿 bottom 顶替 —— 前端 bottomBarPadding 取
+     *                Math.max(bottom, keyboard)，两条路径给的值不一致时，搜歌弹键盘底部栏就抬不起来。
+     */
+    private void inject(int left, int top, int right, int bottom, int keyboardPx) {
         final float density = getBridge().getWebView().getResources().getDisplayMetrics().density;
         // 隐藏态下 inset 的 bottom 是 0，但手势条仍占着 → 与 getInsets 同一套兜底。
         final float minBottomPx = fallbackGestureDp() * density;
@@ -77,6 +83,7 @@ public class SafeInsetsPlugin extends Plugin {
         final String t = trim(top / density);
         final String r = trim(right / density);
         final String b = trim(effectiveBottom / density);
+        final String k = trim(keyboardPx / density);
         // 逐条 setProperty —— 不能把 "a:1px;b:2px" 整串当成一个属性名传进去（那样什么都没设上）。
         final String script = String.format(
                 java.util.Locale.US,
@@ -91,7 +98,7 @@ public class SafeInsetsPlugin extends Plugin {
                 VAR_PREFIX, t,
                 VAR_PREFIX, r,
                 VAR_PREFIX, b,
-                VAR_PREFIX, b,
+                VAR_PREFIX, k,
                 VAR_PREFIX, b);
         getBridge().getWebView().post(() ->
                 getBridge().getWebView().evaluateJavascript(script, value ->

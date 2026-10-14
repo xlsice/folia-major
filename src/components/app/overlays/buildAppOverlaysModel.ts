@@ -117,6 +117,11 @@ export type AppOverlaysDeps = {
     stageIsNextUp: boolean;
     /** 当前页面 + 显示模式允许卡片在场（歌词页总是，首页看设置）；App 里算好的单一来源 */
     stageTrackPillOnScreen: boolean;
+    /**
+     * 当前 suite 的**首页**自带底部播放条（netease），这一屏不挂宿主浮条。
+     * App.tsx 算好：要在 currentView 与浏览深度上一起判断（见 librarySuiteOwnsHomePlayerBar）。
+     */
+    suiteOwnsHomePlayerBar: boolean;
     /** 点卡片时展开右侧面板的歌曲卡片（切到 cover 页并打开） */
     openSongCardPanel: () => void;
 };
@@ -177,6 +182,7 @@ export const buildAppOverlaysModel = ({
     stageNextUp,
     stageIsNextUp,
     stageTrackPillOnScreen,
+    suiteOwnsHomePlayerBar,
     openSongCardPanel,
     stageTrackPillOpenPlayerLabel,
     stageTrackPillOpenSongCardLabel,
@@ -252,7 +258,9 @@ export const buildAppOverlaysModel = ({
             onClose: () => setIsMemoryMonitorVisible(false),
         }
         : null,
-    floatingControls: currentSong
+    // 宿主浮条唯一的门槛本来是「有当前歌曲」。但 netease 首页自带迷你播放条，两条会叠在同一处
+    // （实测宿主胶囊 y=721..753 压住 netease 标签栏 725..778），所以让自带播放条的 suite 在首页接管。
+    floatingControls: currentSong && !suiteOwnsHomePlayerBar
         ? {
             currentSong,
             playerState,

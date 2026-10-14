@@ -70,6 +70,20 @@ export const confirmOnboardingLibrarySuite = (): void => {
  */
 export const isWallLibrarySuite = (suiteId: LibrarySuiteId): boolean => suiteId === 'bravais';
 
+/**
+ * 这套 suite 的**首页**自带底部播放条（netease），首页上因此不再挂宿主那条浮条。
+ *
+ * 为什么（2026-10-14 真机实测）：宿主浮条只有一个门槛 —— 有当前歌曲就渲染
+ * （buildAppOverlaysModel.ts `floatingControls: currentSong ? … : null`）。
+ * grid / bravais 把那条胶囊浮条当设计的一部分，不冲突；netease 的首页自带迷你播放条 + 底部标签栏，
+ * 两条正好叠在同一处：宿主胶囊实测占 y=721..753，netease 标签栏占 725..778 ——
+ * 结果是一颗 `00:00 —— 04:05` 的白色胶囊盖住「本地 / 专辑 / 远程」三个标签。
+ *
+ * 只在**首页**生效：netease 的 collection / artist / account 三个 surface 没有迷你播放条，
+ * 那些页面上宿主浮条仍是唯一的播放入口，照常挂着。
+ */
+export const librarySuiteOwnsHomePlayerBar = (suiteId: LibrarySuiteId): boolean => suiteId === 'netease';
+
 /** 此刻实际生效的 suite（非响应式，命令面板用）。 */
 export const getActiveLibrarySuiteId = (): LibrarySuiteId => (
     resolveActiveLibrarySuiteId(useLibrarySuiteStore.getState().suite)

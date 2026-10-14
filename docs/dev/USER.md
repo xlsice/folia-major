@@ -102,24 +102,34 @@
    **新增第四套 library suite「netease」= 手机版网易云布局，已真机验证**。
    归档 `C:\Users\wodes\AppData\Local\Folia-Android\` 旁的
    `C:\Users\wodes\XLS\APP\Folia-Android\Folia-Android-debug-0.7.18.apk`。
-2. **⚠️ 切库内界面不用重装**：设置 → 选项 → 「播放进入视图」下面选**网易云布局**，
+   **2026-10-14 更新**：推荐墙已真出数据（35 张封面 / 每日推荐 33 首），
+   宿主浮条与套件标签栏的**压叠**已修（真机 adb 截图确认）。
+2. **⚠️ `docs/dev/android-build.ps1` 只打包不装机** —— 每次装机后必须自己核对：
+   `adb shell dumpsys package top.izuna.foliamajor | Select-String lastUpdateTime`，
+   时间戳早于 APK 的 `LastWriteTime` 就是没装上（我因此把一个未验证的改动当成「已实测」汇报过）。
+   装完还要清 Service Worker，否则仍跑旧 chunk。
+3. **⚠️ 切库内界面不用重装**：设置 → 选项 → 「播放进入视图」下面选**网易云布局**，
    或 **Ctrl+K** → 搜「资料库界面」。切的是 localStorage `library_suite`，
    存的是**裸字符串** `netease`（不是 JSON `"netease"`），写错会静默回退到网格。
-3. **网易云布局套装的配色跟着主题走**：从 `theme` 推 `--nt-*` 变量，
+4. **网易云布局套装的配色跟着主题走**：从 `theme` 推 `--nt-*` 变量，
    组件里不写死色值（用户明确要求：别弄成固定配色）。
    真机实测浅色/暗色两套变量全部正确，`onAccent` 会自动反色保对比度。
    改动它时**别在组件里加硬编码色**，加到 `src/library/suites/netease/neteaseTheme.ts`。
-2. **⚠️ 音源部署在别处，不在本机**（2026-10-14 用户澄清，我曾误以为是本机 `ncm-api.ps1` 起的那个）。
+5. **⚠️ 音源部署在别处，不在本机**（2026-10-14 用户澄清，我曾误以为是本机 `ncm-api.ps1` 起的那个）。
    排查「列表空 / 加载失败」类问题前，**先读 `docs/dev/NETWORK.md`**，
    不要在本机找服务、也不要启动 `ncm-api.ps1` 来"修"问题。
    典型症状：控制台 `[QQMusic] Search failed: SyntaxError: Unexpected token '<'`
    （后端返回的是 HTML 错误页而非 JSON），此时先怀疑音源不可达，而不是界面坏了。
-3. **后台播放 —— 现在是最大缺口**。`dumpsys media_session` 实测搜不到 `foliamajor`
+6. **后台播放 —— 现在是最大缺口**。`dumpsys media_session` 实测搜不到 `foliamajor`
    ⇒ 锁屏断播、耳机按键无响应。要写原生 Media3/ExoPlayer + `MediaSessionService`。
-4. **QQ / 酷狗音源还没通** —— `.env.local` 只配了网易云。那两个平台仍报 `*_API_BASE_MISSING`，
+7. **迷你播放条还没接真实播放状态** —— `NeteaseMiniPlayer` 的 `onTogglePlayback` 已接，
+   但契约的 home props 里没有 `isPlaying` 字段，图标恒为「播放」。要读 `usePlaybackStore`。
+   右侧「队列」按钮目前只弹 `onStatusMessage` 提示，没接真实队列面板。**用户说了本轮不做。**
+8. **QQ / 酷狗音源还没通** —— `.env.local` 只配了网易云。那两个平台仍报 `*_API_BASE_MISSING`，
    且酷狗没有现成的本地包（`api-ts/` 里没有），要另外解决。
-5. **旋转适配** —— 按他要求本轮不做。转屏后缝会被挤出屏幕自动收起，点边缘标签能唤回。
-
+9. **旋转适配** —— 按他要求本轮不做。转屏后缝会被挤出屏幕自动收起，点边缘标签能唤回。
+10. **Android 侧还有一个 404**：`https://api.amll.dev/v1/lyrics/get` 返回 404（逐字歌词 provider）。
+   与本次改动无关，是既有现象。要查歌词接口可用性时留意它。
 > ⚠️ **别再凭截图断言「没做移动端适配」**。上一轮就是这么误判的（详见 CHANGELOG
 > `dev-2026-10-13-seam-viewport`）：竖排与居中都是上游设计意图，真 bug 是量纲混用。
 > 判断 UI 适配问题**必须读代码 + 用 CDP 量真实尺寸**。

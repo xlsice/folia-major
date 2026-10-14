@@ -110,7 +110,7 @@ Folia 是 **AGPL-3.0**（标准原文，无附加条款）。约束：
 
 背景模式（6 个）：`common` `latent`（默认） `monet` `nomand` `sora` `url`
 
-资料库套件（3 个）：`bravais` `grid` `tui`
+资料库套件（4 个）：`bravais` `grid` `tui` `netease`（`netease` 是本 fork 加的，网易云手机版竖屏布局）
 
 ---
 
@@ -299,6 +299,66 @@ per-user 安装无需 UAC，约 10 秒完成。
 
 所以**不会**触发 SmartScreen，`Unblock-File` 也不需要。
 但该 exe `Authenticode Status = NotSigned` —— 完整性只能靠 `latest.yml` 的哈希验证。
+
+### ⛔ `docs/dev/android-build.ps1` 只打包，**从不装机**
+
+它跑完 gradle、打印一行 `=== APK output ===` 就结束，看着像成功了。**没有 `adb install`。**
+
+后果（本轮实测踩了两轮）：改了原生代码 → 重新构建 → 上真机 → 现象没变 → 反复改代码。
+其实测的一直是**上一版** APK。
+
+判定就一条，装机后必查：
+
+```powershell
+adb -s <dev> shell dumpsys package top.izuna.foliamajor | Select-String lastUpdateTime
+```
+
+时间戳早于 APK 的 `LastWriteTime` = 没装上去。装机命令：
+
+```powershell
+adb -s <dev> install -r -d 'android\app\build\outputs\apk\debug\app-debug.apk'
+```
+
+配套：**重装 APK 后还要清一次 Service Worker**（缓存存在 app data 里，跨重装保留），
+否则仍跑旧 chunk。判定同样是 hash 比对：设备上的 `bootstrap-*.js` 对不上本地 `dist/assets/` 就是旧包。
+
+```js
+await navigator.serviceWorker.getRegistrations().then(rs => Promise.all(rs.map(r => r.unregister())));
+await caches.keys().then(ks => Promise.all(ks.map(k => caches.delete(k))));
+location.reload();
+```
+
+⚠️ 别用 `grep` 在打包产物里找新加的标识符判定「代码进没进去」——**esbuild 会 mangle 内部对象的属性名**，
+`suiteOwnsHomePlayerBar` 这种只在模块内传递的属性名根本不会出现在产物里。**只认运行时行为。**
+
+### ⛔ 宿主播放条浮条只有一个门槛：有当前歌曲就渲染
+
+`buildAppOverlaysModel.ts` 的 `floatingControls: currentSong ? … : null`。grid / bravais 把它当设计的一部分，
+所以**任何自带底部播放条的 suite 都会和它正面撞车**（netease 实测：胶囊 y=713..762 压住标签栏 725..778，
+「本地 / 专辑 / 远程」三个标签被吃掉一半）。
+
+修法是加一道 suite 谓词，不是挪版式：
+`library/app/librarySuiteChoice.ts` 的 `librarySuiteOwnsHomePlayerBar(suiteId)` +
+`App.tsx` 算 `suiteOwnsHomePlayerBar`。
+
+⚠️ **必须把浏览深度一起算进去**：歌单 / 歌手详情页也在 `currentView === 'home'` 之下，
+但那些 surface 没有迷你播放条，只按 `currentView` 判断会把它们的播放入口也关掉。
+
+DOM 取证用 `[data-ponder="player-bar"]`，比读 className 稳。
+
+### ⛔ `core` 的 `radioFeed` 在非 grid suite 上是死的
+
+`LibraryHomeRadioFeed` 里明明带 `recommended` / `dailyCoverUrl` / `personalFmCoverUrl`，
+但取值链路上有三重门：`onlineHomeFeeds.ts:95` 的 owner 门、`useLibraryHomeOnlineFeeds.ts:43` 的
+`canUseRadio && userId`、同文件 `:45` 的 `tab === 'radio'`（tab 是宿主 `HomeViewTab`，不是 suite 自己的 id）。
+
+**要在线推荐就直接调 `omni.getHomeFeed(limit)`**（数据源本身，内部并发三个接口，带 provider 门控）。
+另外 `omni.ts:106` 在 provider 切换途中抛 `AbortError`——做加载态时别把它当普通失败吞掉，
+否则一次切号就把页面永久锁死。
+
+### ⛔ `SOP` — 装机验证前先核对 `lastUpdateTime`
+
+见上面第一条。**「构建成功」不等于「装机成功」**，这两步在本仓是分开的脚本。
 
 ### ⚠️ 仓库现存的分层边界违规（改动时别加深）
 

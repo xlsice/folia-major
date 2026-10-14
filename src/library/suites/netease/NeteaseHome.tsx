@@ -1,6 +1,8 @@
 import React from 'react';
 import { Compass, FolderOpen, ListMusic, Radio, RefreshCw, Plus, HardDrive, Library as LibraryIcon, Server, User } from 'lucide-react';
-import { useSyncExternalStore } from 'react';
+import { omni } from '../../../services/onlineMusic/omni';
+import { getSongCoverUrl } from '../../../services/onlineMusic/songMetadata';
+import type { SongResult } from '../../../types';
 import type { LibraryHomeSurfaceProps } from '../../core/contracts/suite';
 import type { ProviderCollection } from '../../../types/onlineMusic';
 import { buildNeteasePalette, placeholderTint } from './neteaseTheme';
@@ -15,6 +17,16 @@ import {
     NeteaseShell,
     NeteaseTabBar,
 } from './neteaseParts';
+
+/** 推荐歌单取多少条（与 core 的 HOME_FEED_RECOMMENDATION_LIMIT 一致）。 */
+const HOME_FEED_LIMIT = 35;
+
+/** omni.getHomeFeed 的返回形状（omni.ts:440）。 */
+type HomeFeedShape = {
+    personalFm: SongResult[];
+    dailySongs: SongResult[];
+    recommendedCollections: ProviderCollection[];
+};
 
 // src/library/suites/netease/NeteaseHome.tsx
 // netease suite 的首页：手机版网易云的结构 —— 常驻搜索条 + 横向歌单卡 + 底部标签栏。
@@ -67,27 +79,6 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
 
     const needle = query.trim().toLowerCase();
     const matchName = (name?: string | null) => !needle || (name ?? '').toLowerCase().includes(needle);
-
-    // 「推荐」页的数据：core 的 radioFeed 资源（宿主持有、切 suite 不重建）。
-    // 进推荐页时 ensure 一次，首页离开后归属会被宿主作废，所以每次进都要 ensure。
-    const radioFeed = homeResources?.radioFeed;
-    const radioSnapshot = useSyncExternalStore(
-        React.useCallback(listener => radioFeed?.subscribe(listener) ?? (() => {}), [radioFeed]),
-        React.useCallback(() => radioFeed?.getSnapshot() ?? null, [radioFeed]),
-    );
-    React.useEffect(() => {
-        if (tab === 'discover') void radioFeed?.ensure();
-    }, [tab, radioFeed]);
-
-    const recommended = React.useMemo(() => {
-        const source = radioSnapshot?.data?.recommended ?? [];
-        return source.filter(item => matchName(item.name));
-        // matchName 依赖 needle，needle 已进依赖表。
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [radioSnapshot, needle]);
-
-    const dailyCount = radioSnapshot?.data?.dailyCount ?? 0;
-    const dailyCover = radioSnapshot?.data?.dailyCoverUrl;
 
     // 首页数据里没有 theme / isDaylight 的显式 prop 时，从契约的 theme 推；
     // isDaylight 由宿主的 ThemeSettingsStore 决定，这里用背景亮度反推，保证与全局一致。
@@ -188,13 +179,62 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
     );
 
     /**
-     * 推荐页（网易云第一屏）：每日推荐两个大入口 + 推荐歌单瀑布墙。
-     * 数据来自 core 的 radioFeed（omni.getHomeFeed），不是自己拉的。
+     * 「推荐」页的数据。
+     *
+     * ⚠️ 为什么**不**走 homeResources.radioFeed（2026-10-14 实测排查结论）：
+     * 那条路有三重门，对本套全部关着——
+     *   1. core/services/onlineHomeFeeds.ts:95 `ensure: if (!snapshot.owner) return`（owner 为 null 静默返回）
+     *   2. core/bindings/useLibraryHomeOnlineFeeds.ts:43 `setOwner(ownerOf(providerId, userId, canUseRadio))`
+     *   3. 同文件 :45 只在 `tab === 'radio'` 时 ensure，而 tab 是宿主 HomeViewTab，本套叫 'discover'
+     * 结果：首页一条 `/personalized` 都没发，推荐页永远空。
+     * 而用同一份 cookie 手动打是好的（实测 /personalized 200+6条、/recommend/songs 200+33首、
+     * /personal_fm 200），**数据一直都在，只是没人去读**。
+     *
+     * 所以直接调 omni.getHomeFeed —— 它是数据源本身（omni.ts:440 内部并发调
+     * getPersonalFm / getDailySongs / getRecommendedCollections），带 provider 门控与统一 cookie，
+     * 不依赖宿主那几个与 suite 无关的 tab 判断。
      */
-    const renderDiscoverTab = () => {
-        const feedStatus = radioSnapshot?.status;
-        const hasFeed = recommended.length > 0 || dailyCount > 0;
+    const [feed, setFeed] = React.useState<HomeFeedShape | null>(null);
+    const [feedStatus, setFeedStatus] = React.useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
 
+    // 已经为哪个会话发起过读取。存会话 key 而不是存 feedStatus，
+    // 是为了让「失败」和「已读」两件事解耦：一次失败不该把后续所有重试挡在门外。
+    const feedKeyRef = React.useRef<string | null>(null);
+    const sessionKey = `${user?.id ?? 'anon'}:${HOME_FEED_LIMIT}`;
+
+    const loadFeed = React.useCallback(async () => {
+        setFeedStatus('loading');
+        try {
+            setFeed(await omni.getHomeFeed(HOME_FEED_LIMIT));
+            setFeedStatus('ready');
+        } catch (error) {
+            // omni.ts:106 在 provider 切换途中会抛 AbortError —— 那是「发起得太早」，
+            // 不是「音源挂了」。必须放回可重试态，否则一次切号就把推荐页永久锁死成 error。
+            const aborted = error instanceof DOMException && error.name === 'AbortError';
+            if (aborted) feedKeyRef.current = null;
+            setFeedStatus(aborted ? 'idle' : 'error');
+        }
+    }, []);
+
+    // 进推荐页读一次；同一会话内不重复读（切走再回来直接用缓存）。
+    React.useEffect(() => {
+        if (tab !== 'discover' || feedStatus === 'loading') return;
+        if (feedKeyRef.current === sessionKey) return;
+        feedKeyRef.current = sessionKey;
+        void loadFeed();
+    }, [tab, sessionKey, feedStatus, loadFeed]);
+
+    const recommended = React.useMemo(
+        () => (feed?.recommendedCollections ?? []).filter(item => matchName(item.name)),
+        [feed, needle],
+    );
+    const dailyCount = feed?.dailySongs.length ?? 0;
+    const dailyCover = feed?.dailySongs[0] ? getSongCoverUrl(feed.dailySongs[0]) : undefined;
+    const personalFmCover = feed?.personalFm[0] ? getSongCoverUrl(feed.personalFm[0]) : undefined;
+
+    /** 推荐页（网易云第一屏）：每日推荐 / 私人 FM 两个入口 + 推荐歌单墙。 */
+    const renderDiscoverTab = () => {
+        const hasFeed = recommended.length > 0 || dailyCount > 0;
         return (
             <>
                 {/* 每日推荐 / 私人 FM：两个方块，网易云并排放在推荐墙最上面 */}
@@ -233,8 +273,8 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                                 className="h-16 w-16 overflow-hidden rounded-full"
                                 style={placeholderTint('personal-fm', isDaylight)}
                             >
-                                {radioSnapshot?.data?.personalFmCoverUrl ? (
-                                    <img src={radioSnapshot.data.personalFmCoverUrl} alt="" className="h-full w-full object-cover" />
+                                {personalFmCover ? (
+                                    <img src={personalFmCover} alt="" className="h-full w-full object-cover" />
                                 ) : (
                                     <span className="flex h-full w-full items-center justify-center">
                                         <Radio size={22} style={{ color: 'var(--nt-text)' }} />

@@ -54,7 +54,7 @@ import { persistPlaybackCache } from './components/app/playback/persistPlaybackC
 import { useAppOverlaysModel } from './components/app/overlays/useAppOverlaysModel';
 import { resolveNextUpTrack } from './components/app/overlays/now-playing-toast/resolveNextUpTrack';
 import { shouldShowNowPlayingToast } from './components/app/overlays/now-playing-toast/nowPlayingToastVisibility';
-import { isWallLibrarySuite, useActiveLibrarySuiteId } from './library/app/librarySuiteChoice';
+import { isWallLibrarySuite, librarySuiteOwnsHomePlayerBar, useActiveLibrarySuiteId } from './library/app/librarySuiteChoice';
 import {
     createSearchAlbumCollection,
     createSearchArtistCollection,
@@ -114,6 +114,7 @@ import { useThemeController } from './hooks/useThemeController';
 import { useOnlineSongMetadataHydration } from './hooks/useOnlineSongMetadataHydration';
 import { resolveCommandPaletteSearchSource, resolveSearchSource, useSearchNavigationStore } from './stores/useSearchNavigationStore';
 import { useOnlineProviderAccountStore } from './stores/useOnlineProviderAccountStore';
+import { useCollectionNavigationStore } from './stores/useCollectionNavigationStore';
 import { useShallow } from 'zustand/react/shallow';
 import { clampMediaVolume, toSafeRemoteUrl } from './utils/appPlaybackHelpers';
 import { getOnlineProviderIdForSong, getPlaybackSongKey, isLocalPlaybackSong, isNavidromePlaybackSong, isStagePlaybackSong } from './utils/appPlaybackGuards';
@@ -1246,6 +1247,19 @@ export default function App() {
      * lands there and a walk back from another page behave the same.
      */
     const activeLibrarySuiteId = useActiveLibrarySuiteId();
+    /**
+     * 首页 surface 自带底部播放条（netease），这一屏不挂宿主的胶囊浮条。
+     *
+     * 浮条原来只有一个门槛 —— 有当前歌曲就渲染。grid / bravais 把胶囊当设计的一部分，不冲突；
+     * netease 首页自带迷你播放条 + 标签栏，两条会叠在同一处（实测胶囊 y=721..753 压住标签栏 725..778）。
+     *
+     * 浏览深度要一起看：歌单 / 歌手详情页虽然也在 currentView==='home' 下，但那几个 surface
+     * 没有迷你播放条，那几屏上宿主浮条仍是唯一的播放入口。
+     */
+    const collectionBrowseDepth = useCollectionNavigationStore(state => state.snapshot?.stack.length ?? 0);
+    const suiteOwnsHomePlayerBar = currentView === 'home'
+        && collectionBrowseDepth === 0
+        && librarySuiteOwnsHomePlayerBar(activeLibrarySuiteId);
     const stageTrackPillOnScreen = shouldShowNowPlayingToast({
         mode: stageTrackPillMode,
         view: currentView,
@@ -2326,6 +2340,7 @@ export default function App() {
         stageNextUp,
         stageIsNextUp,
         stageTrackPillOnScreen,
+        suiteOwnsHomePlayerBar,
         openSongCardPanel,
     });
     const settingsDialog = useSettingsDialogModel({

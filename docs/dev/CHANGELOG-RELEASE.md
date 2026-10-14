@@ -8,6 +8,87 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-14-feed-and-playerbar` — 推荐墙真出数据 + 宿主浮条让位
+
+**性质**：修 bug + 一处必要的宿主改动。结论：达成，已真机验证。
+
+#### 1. 推荐页空数据 → 直接调 `omni.getHomeFeed`
+
+上一条写了「数据源本来就有」，但那是**错的一半**：契约里的 `radioFeed` 在 netease 这条路上三重门全关着。
+
+| 位置 | 门 |
+| --- | --- |
+| `core/services/onlineHomeFeeds.ts:95` | `ensure: if (!snapshot.owner) return` —— owner 为 null 静默返回 |
+| `core/bindings/useLibraryHomeOnlineFeeds.ts:43` | `setOwner(ownerOf(providerId, userId, canUseRadio))`，要 `canUseRadio && userId` 同时成立 |
+| 同文件 `:45` | 只在 `tab === 'radio'` 时 ensure，而 tab 是宿主 `HomeViewTab`，本套叫 `'discover'` |
+
+结果：一条 `/personalized` 都不发，推荐页永远空。实测同一份 cookie 手动打三个接口全部有数据
+（`/personalized` 35 条 / `/recommend/songs` 33 首 / `/personal_fm` 3 首）——**数据一直在，只是没人读**。
+
+改法：`NeteaseHome` 直接调 `omni.getHomeFeed(35)`（数据源本身，`omni.ts:440` 内部并发调三个接口）。
+
+顺带修掉一个真隐患：`useEffect` 原来用 `feedStatus !== 'idle'` 自锁。`omni.ts:106` 在 provider 切换途中
+会抛 `AbortError`，一次切号就把推荐页**永久**锁死成 error。现在按**会话 key**（`user.id`）记已发起过，
+`AbortError` 单独放回可重试态——失败与「已读」解耦。
+
+#### 2. 宿主胶囊浮条压住底部标签栏（真 bug，adb 截图确认）
+
+真机截图上，`00:00 —— 04:05` 一颗白色胶囊盖在标签栏上，「本地 / 专辑 / 远程」三个标签被吃掉一半。
+DOM 取证：`[data-ponder="player-bar"]` 占 y=713..762，netease 标签栏 725..778，正面撞车。
+
+根因：`buildAppOverlaysModel.ts` 里宿主浮条**只有一个门槛**——有当前歌曲就渲染。
+grid / bravais 把胶囊当设计的一部分，不冲突；netease 首页自带迷你播放条 + 标签栏，就成了两条。
+
+改动（**这是本轮唯一的宿主改动**，共 3 个文件、约 20 行）：
+- `library/app/librarySuiteChoice.ts` 新增 `librarySuiteOwnsHomePlayerBar(suiteId)`
+- `App.tsx` 算 `suiteOwnsHomePlayerBar = currentView==='home' && 浏览深度===0 && librarySuiteOwnsHomePlayerBar(id)`
+- `buildAppOverlaysModel.ts` 的 `floatingControls` 加这个条件
+
+**浏览深度必须一起看**：歌单 / 歌手详情页也在 `currentView==='home'` 下，但那几个 surface 没有迷你播放条，
+那几屏上宿主浮条仍是唯一的播放入口。只按 `currentView` 判断会把它们也关掉。
+
+#### 3. `--nt-inset-keyboard` 写错了来源
+
+`SafeInsetsPlugin.inject()` 原来只收 4 个值，第 5 个位置传的是 `b`，于是 `--nt-inset-keyboard` 恒等于
+`--nt-inset-bottom`；而 JS 路径 `getInsets()` 返回的是真 IME 值。**两条路径不一致**，搜歌弹键盘时
+前端 `bottomBarPadding = Math.max(bottom, keyboard)` 拿到的不是键盘高度。已让 `inject()` 收第 5 个参数。
+
+#### 🔴 本轮踩到的一个大坑：构建脚本只打包、不装机
+
+`docs/dev/android-build.ps1` **只跑 gradle，从不 `adb install`**。它打完印一行
+`=== APK output ===` 就结束，看着像成功了。
+
+后果：我据此以为「键盘 inset 修复已真机验证」并下了结论，其实那版**从未上过机**
+（`dumpsys package` 的 `lastUpdateTime` 还停在上一版的时间戳）。重影修了两轮没消，也是同一个原因——
+测的一直是旧包。判定方法就一条：
+
+```
+adb -s <dev> shell dumpsys package top.izuna.foliamajor | Select-String lastUpdateTime
+```
+
+时间戳早于 APK 的 `LastWriteTime` = 没装上去。**以后每次装机后都要核这一条。**
+
+配套：重装 APK 后还要清一次 Service Worker（缓存跨重装保留，app data 不清），
+否则仍跑旧 chunk —— 判定同样是一行：设备上的 `bootstrap-*.js` hash 对不上本地 `dist/assets/`。
+
+#### 真机验收数据（一加 Ace 3 / Android 16 / 视口 361×794 / density 3.5）
+
+| 项 | 实测 |
+| --- | --- |
+| 推荐墙封面 | 35 张全部 `naturalWidth > 0` |
+| 每日推荐 / 私人 FM | 33 首 / 封面正常 |
+| 切 tab 往返 | 35 → 1 → 1 → 1 → 13 → **35**（数据缓存正常，不重复请求） |
+| 底部留白 | 标签栏底边 778 / 视口 794 = **16px**，正对手势区 |
+| `[data-ponder="player-bar"]` | `false`（宿主浮条已让位） |
+| 弹软键盘 | `--nt-inset-keyboard=307.43px`，标签栏抬到 487（抬升 291px） |
+| reload 后 inset 变量丢失 | 留白仍为 16px —— `useSafeInsets.pullFromNative()` 兜底接管 |
+| tsc / 单测 | 0 error / 648 文件 7159 用例全过 |
+
+#### 未做（按用户指示）
+
+- 迷你播放条的真实 `isPlaying` 状态（契约的 home props 没有这个字段，要读 `usePlaybackStore`）
+- 播放条右侧「队列」按钮目前只弹提示，没接真实队列面板
+
 ### `dev-2026-10-14-discover-tab` — 首页第一屏改为推荐墙 + 新增「我的」标签
 
 **性质**：信息架构调整（用户按真网易云截图提的）。commit `73ffb096`。
