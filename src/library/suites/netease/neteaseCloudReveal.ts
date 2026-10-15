@@ -6,8 +6,12 @@
 //
 // 这套东西的来历：用户先要「把歌词界面的云阶文字效果铺开」，随后明确说
 // 「每块独立缩放/微旋这些特性都不要，要不然影响可读性，我想要浮云的字出现的效果，而非它的排版」。
-// 所以从 partita 继承的**只有「逐词依次浮现」这一条**，不均匀切块、左右错位、
-// 逐块缩放方差、微旋、引导线全部不保留 —— 那些都属于「排版」，它们正是伤可读性的部分。
+//
+// ⛔ 第一版把「出现的效果」也一起砍了，只剩淡入 + 上浮，被用户一眼看穿少了三样：
+// **模糊出场、弹性入场、颜色追踪**。这三样全都属于出场效果，不是排版，不该跟着排版一起删。
+// 原版出处：glowWordVariants.ts:55（blur 10px）、:27（spring 200/20）、partitaLayout.ts:94（追色）。
+//
+// 砍掉的**只有**排版：不均匀切块、左右错位、逐块缩放方差、微旋、引导线。
 
 /** 文字的视觉档位。大字浮得远、浮得久，小字只是轻轻一动。 */
 export type NeteaseCloudTier = 'display' | 'title' | 'item' | 'meta';
@@ -17,19 +21,31 @@ export interface CloudRevealSpec {
     rise: number;
     /** 每个词之间的延迟（秒）。 */
     stagger: number;
-    /** 单个词浮现的时长（秒）。 */
+    /** 单个词浮现的时长（秒）。弹簧的静息时间，不单独控制缓动。 */
     duration: number;
+    /** 出场时的模糊半径（px）。按字号缩放 —— 原版是 10px，那是给 40~88px 大字用的。
+     *  **0 表示这一档不做模糊**：见下面 meta 那行的理由。 */
+    blur: number;
+    /** 模糊消退的时长（秒）。 */
+    blurDuration: number;
+    /** 颜色从底色混出来的状态走到最终色所需的时长（秒）。比模糊长，追色才看得见。 */
+    tintDuration: number;
 }
 
 export const NETEASE_CLOUD_TIERS: Record<NeteaseCloudTier, CloudRevealSpec> = {
     // 页面大标题（歌单详情名、板块标题）
-    display: { rise: 9, stagger: 0.055, duration: 0.52 },
+    display: { rise: 9, stagger: 0.055, duration: 0.52, blur: 3.5, blurDuration: 0.34, tintDuration: 0.44 },
     // 次级标题（空状态说明、折叠区块标签）
-    title: { rise: 6, stagger: 0.045, duration: 0.44 },
+    title: { rise: 6, stagger: 0.045, duration: 0.44, blur: 2.5, blurDuration: 0.30, tintDuration: 0.40 },
     // 列表主文本（歌单名、曲目名）
-    item: { rise: 4, stagger: 0.030, duration: 0.36 },
+    item: { rise: 4, stagger: 0.030, duration: 0.36, blur: 2, blurDuration: 0.26, tintDuration: 0.36 },
     // 副文本（曲目数、艺人、标签栏）
-    meta: { rise: 3, stagger: 0.022, duration: 0.30 },
+    //
+    // ⚠️ blur = 0：**这一档是全页最密的**（歌单详情页 145/223，首页约一半），
+    // 而 13px 上的 1.6px 模糊恰恰是四档里最看不出来的。
+    // 真机 A/B 过：给全部四档都加模糊，首页冷启入场的中位帧间隔从 12ms 涨到 18ms，
+    // 代价几乎全在这最密、也最看不出的一档上。宁可少这一档，别的档位模糊照给。
+    meta: { rise: 3, stagger: 0.022, duration: 0.30, blur: 0, blurDuration: 0.22, tintDuration: 0.32 },
 };
 
 const CJK = /[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/;

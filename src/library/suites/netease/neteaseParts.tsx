@@ -579,6 +579,44 @@ export const NETEASE_STYLES = `
 .nt-t-label   { font-size:12px; font-weight:500; line-height:16px; letter-spacing:.2px; }
 .nt-t-caption { font-size:11px; font-weight:400; line-height:15px; font-variant-numeric:tabular-nums; }
 
+/* ── 浮云文字的三样出场效果（blur / 追色两段动画在 CSS，位移与缩放在 framer）──────────
+
+   @property 是必需的：没有它，浏览器不会对自定义属性做插值，--nt-cloud-mix 只能一格一格跳。
+   initial-value 给 1 = 最终色，所以「动画没跑 / 不支持 / 动效关掉」三种情况下都是正确颜色。 */
+@property --nt-cloud-mix { syntax: '<number>'; initial-value: 1; inherits: false; }
+
+/* 模糊出场：云阶原版是 blur(10px) → none（glowWordVariants.ts:55）。这里按字号缩放，
+   半径与时长由档位表通过变量传进来。 */
+@keyframes nt-cloud-blur { from { filter: blur(var(--nt-cloud-blur)); } to { filter: none; } }
+
+/* 颜色追踪：--nt-cloud-mix 0 → 1，字从「和底色混过的自己」走到最终色。
+   混的比例 68% 是量出来的 —— 再深就看不出在追色，再浅就脏。 */
+@keyframes nt-cloud-tint { from { --nt-cloud-mix: 0; } to { --nt-cloud-mix: 1; } }
+
+.nt-cloud-word {
+    animation: nt-cloud-blur var(--nt-cloud-blur-dur) ease-out var(--nt-cloud-delay, 0s) both,
+               nt-cloud-tint var(--nt-cloud-tint-dur) linear var(--nt-cloud-delay, 0s) both;
+    /* currentColor 写在元素自己的 color 上时解析成**继承来的**颜色 ——
+       也就是调用方挂在 NeteaseCloudText 根元素上的最终色（--nt-text / --nt-text-faint …）。
+       实测过：100% 时得到继承色的 oklab，0% 时得到混入色。所以这套不需要知道任何一档的目标色。
+       mix 到 1 时第二项占 100%、第一项归零，**终点精确等于最终色**，文字停下后不会整页发灰。
+       不支持 color-mix 的引擎整条丢弃这条声明 —— color 退回继承值，仍然是最终色，
+       表现只是「没有追色」，不会出现坏掉或看不见的字。 */
+    color: color-mix(
+        in oklab,
+        var(--nt-bg) calc((1 - var(--nt-cloud-mix)) * 68%),
+        currentColor calc(var(--nt-cloud-mix) * 100%)
+    );
+}
+
+/* 档位表里 blur = 0 的那些（只有 meta）走这条：把动画名覆盖成只剩追色一条。
+   必须是「不挂动画」而不是「半径设成 0」—— 动画中的 filter 会把每个词顶成独立合成层，
+   歌单详情页两百多个 meta 词同时跑一遍就是白给的开销。
+   写在 .nt-cloud-word 之后：同优先级，靠顺序取胜。 */
+.nt-cloud-word--no-blur {
+    animation: nt-cloud-tint var(--nt-cloud-tint-dur) linear var(--nt-cloud-delay, 0s) both;
+}
+
 /* 占位符色是伪元素，inline style 表达不了，必须走这条规则。
    改造前搜索框占位符一直吃浏览器默认值，实测对 --nt-field 的对比度不合格。 */
 .nt-input::placeholder { color: var(--nt-text-faint); opacity: 1; }

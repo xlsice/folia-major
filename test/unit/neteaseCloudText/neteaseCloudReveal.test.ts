@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     NETEASE_CLOUD_TIERS,
     tokenizeCloudText,
+    type NeteaseCloudTier,
 } from '../../../src/library/suites/netease/neteaseCloudReveal';
 
 describe('浮云文字（neteaseCloudReveal）', () => {
@@ -90,12 +91,51 @@ describe('浮云文字（neteaseCloudReveal）', () => {
             expect(NETEASE_CLOUD_TIERS.meta.stagger).toBeLessThan(NETEASE_CLOUD_TIERS.display.stagger);
         });
 
-        it('每一档的数值都是正的有限数', () => {
+        it('每一档的数值都是有限的非负数', () => {
             for (const spec of Object.values(NETEASE_CLOUD_TIERS)) {
-                expect(Number.isFinite(spec.rise)).toBe(true);
+                for (const value of Object.values(spec)) {
+                    expect(Number.isFinite(value)).toBe(true);
+                    expect(value).toBeGreaterThanOrEqual(0);
+                }
+                // 除 blur（meta 档刻意为 0）外，其余都必须是正的 —— 0 会让整档动效消失。
                 expect(spec.rise).toBeGreaterThan(0);
-                expect(spec.stagger).toBeGreaterThanOrEqual(0);
+                expect(spec.stagger).toBeGreaterThan(0);
                 expect(spec.duration).toBeGreaterThan(0);
+                expect(spec.tintDuration).toBeGreaterThan(0);
+                expect(spec.blurDuration).toBeGreaterThan(0);
+            }
+        });
+    });
+
+    // 云阶原版是 blur(10px)，那是给 40~88px 的大字用的。
+    // 直接照抄到 12~24px 的界面文字上，字会糊成一团到读不出来 —— 所以必须跟着字号缩。
+    describe('模糊出场按字号缩放', () => {
+        const TIERS = Object.keys(NETEASE_CLOUD_TIERS) as NeteaseCloudTier[];
+
+        it('做模糊的档位里，字号越大半径越大', () => {
+            expect(NETEASE_CLOUD_TIERS.item.blur).toBeLessThan(NETEASE_CLOUD_TIERS.title.blur);
+            expect(NETEASE_CLOUD_TIERS.title.blur).toBeLessThan(NETEASE_CLOUD_TIERS.display.blur);
+        });
+
+        it('模糊半径压在小字号可读范围内 —— 比原版的 10px 小一个量级', () => {
+            // 超过 ~2.5px 在 13px 的字上就已经糊得认不出了。
+            for (const tier of TIERS) {
+                const b = NETEASE_CLOUD_TIERS[tier].blur;
+                expect(b).toBeLessThanOrEqual(4);
+                if (b > 0) expect(b).toBeGreaterThan(0.5);
+            }
+        });
+
+        it('meta 档不做模糊：它最密、又最看不出来，代价却几乎全在这里', () => {
+            // 真机 A/B：四档全上模糊，首页冷启入场中位帧间隔 12ms → 18ms。
+            expect(NETEASE_CLOUD_TIERS.meta.blur).toBe(0);
+            // 其余三档必须还在做 —— 别为了省开销把效果整体关掉。
+            expect(TIERS.filter(t => NETEASE_CLOUD_TIERS[t].blur > 0)).toEqual(['display', 'title', 'item']);
+        });
+
+        it('追色比模糊慢 —— 两者同时进行，追色才看得见', () => {
+            for (const tier of TIERS) {
+                expect(NETEASE_CLOUD_TIERS[tier].tintDuration).toBeGreaterThan(NETEASE_CLOUD_TIERS[tier].blurDuration);
             }
         });
     });
