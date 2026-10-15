@@ -10,6 +10,7 @@ import { useSafeInsets, bottomBarPadding } from './useSafeInsets';
 import { useNeteaseIsPlaying, useNeteaseProgress } from './useNeteasePlayback';
 import { useReducedMotionFor } from '../../../hooks/useReducedMotionFor';
 import { NeteasePageSlide } from './neteaseLayerTransition';
+import { NETEASE_CARD_ATTR, NETEASE_CARD_COVER_ATTR } from './neteaseMorph';
 import type { NeteaseTabGlyphId } from './neteaseTabGlyphs';
 
 // entry.ts 不能静态 import 推移模块（registry 是 eager glob 扫所有 entry 的），
@@ -186,8 +187,15 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
             disabled={!isInteractive}
             onClick={() => openCollection(collection)}
             className="flex w-full flex-col gap-2 text-left"
+            {...{ [NETEASE_CARD_ATTR]: String(collection.id) }}
         >
-            <div className="relative aspect-square w-full overflow-hidden rounded-xl" style={placeholderTint(String(collection.id), isDaylight)}>
+            {/* 起飞框量的是**这张封面**，不是整张卡（见 neteaseMorph.ts 的契约说明）。
+                属性值用集合 id：返回时靠它找回同一张卡。 */}
+            <div
+                className="relative aspect-square w-full overflow-hidden rounded-xl"
+                style={placeholderTint(String(collection.id), isDaylight)}
+                {...{ [NETEASE_CARD_COVER_ATTR]: String(collection.id) }}
+            >
                 {collection.coverUrl && (
                     <img
                         src={collection.coverUrl}

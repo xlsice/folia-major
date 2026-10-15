@@ -4,6 +4,8 @@ import { useSyncExternalStore } from 'react';
 import type { SongResult } from '../../../types';
 import type { LibraryCollectionSurfaceProps } from '../../core/contracts/suite';
 import { buildNeteasePalette, placeholderTint } from './neteaseTheme';
+import { useSafeInsets } from './useSafeInsets';
+import { NETEASE_HERO_ATTR, NETEASE_HERO_KEY_ATTR } from './neteaseMorph';
 import { useNeteaseCurrentKey, useNeteaseIsPlaying, useNeteaseScopePlaying } from './useNeteasePlayback';
 import { getPlaybackSongKey } from '../../../utils/appPlaybackGuards';
 import {
@@ -62,6 +64,7 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
     const can = new Set(declaredActions.actions);
     const isDaylight = useIsDaylight(theme?.backgroundColor);
     const palette = React.useMemo(() => buildNeteasePalette(theme, isDaylight), [theme, isDaylight]);
+    const insets = useSafeInsets();
 
     const tracks: SongResult[] = snapshot?.tracks ?? [];
     const detail = snapshot?.detail ?? null;
@@ -75,6 +78,8 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
         isPlayingNow && playingKey !== null && getPlaybackSongKey(track) === playingKey
     );
     const title = detail?.name || collection.name;
+    // 落点那张图优先用快照里的真实封面（更高清、与歌单一致），拿不到才退回描述符里那个。
+    const heroCover = detail?.coverUrl || collection.coverUrl || null;
 
     const headerActions = React.useMemo(() => {
         const entries: NeteaseMenuAction[] = [];
@@ -166,8 +171,39 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
 
     return (
         <NeteaseShell palette={palette} surface="collection">
-            {/* 返回栏。同 Artist：这条也是自带头部，边距要跟上全站的 16px。 */}
-            <div className="flex min-h-[56px] shrink-0 items-center gap-1 px-4">
+            {/* ── 顶部大图：满屏宽的正方形，顶到屏幕最上（盖住状态栏） ──
+                marginTop 的负值抵消 NeteaseShell 垫的 insets.top：那一层内边距是给常规顶栏用的，
+                而这张图要的是**出血到 y=0**（参考视频的落点就是屏幕顶）。绝对定位的子元素不受
+                padding 影响，所以返回栏不用写这层换算，写在这里一处就够。
+
+                落点框量的是**这个盒子**（见 neteaseMorph.ts）。渐变故意做成它的**兄弟节点**而不是叠在它上面：
+                飞行的封面全程盖在这张图上（转场层的 z-index 200 > 集合层 110），落位那一刻两者像素级重合、
+                直接换掉即可 —— 要是把渐变叠在图里面，落位瞬间会突然多出一层渐变，看得见。 */}
+            <div className="relative shrink-0" style={{ marginTop: -insets.top }}>
+                <div
+                    className="w-full overflow-hidden rounded-xl"
+                    style={{ aspectRatio: '1 / 1', ...placeholderTint(String(collection.id), isDaylight) }}
+                    {...{ [NETEASE_HERO_ATTR]: 'true', [NETEASE_HERO_KEY_ATTR]: String(collection.id) }}
+                >
+                    {/* 封面 URL 取自集合描述符（不是异步快照里的 detail.coverUrl）：描述符里已经带着它，
+                        同一张图在首页卡片上已经解码过，这里立刻就能画，落位交换时不会露出占位底色。 */}
+                    {heroCover && <img src={heroCover} alt="" className="h-full w-full object-cover" />}
+                </div>
+                {/* 图与页面底色之间的过渡带。顶端全透明，与图无缝。 */}
+                <div
+                    className="pointer-events-none h-32 w-full"
+                    style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, var(--nt-bg) 82%)' }}
+                />
+            </div>
+
+            {/* 返回栏浮在大图上。底下一道压暗才保证白色图标在任何封面颜色上都读得清。 */}
+            <div
+                className="absolute inset-x-0 top-0 z-10 flex min-h-[56px] items-center gap-1 px-4"
+                style={{
+                    paddingTop: insets.top,
+                    background: 'linear-gradient(to bottom, rgba(0,0,0,0.32) 0%, rgba(0,0,0,0) 100%)',
+                }}
+            >
                 <button
                     type="button"
                     onClick={onBack}
@@ -175,40 +211,28 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
                     className="flex shrink-0 items-center justify-center rounded-full"
                     style={{ width: 'var(--nt-touch-min)', height: 'var(--nt-touch-min)' }}
                 >
-                    <ChevronLeft size={22} style={{ color: 'var(--nt-text)' }} />
+                    <ChevronLeft size={22} color="#ffffff" />
                 </button>
-                <span className="min-w-0 flex-1 truncate px-1 nt-t-item" style={{ color: 'var(--nt-text)' }}>
-                    {title}
-                </span>
+                <span className="flex-1" />
                 {headerActions.length > 0 && (
                     <NeteaseMoreMenu label="歌单操作" actions={headerActions} />
                 )}
             </div>
 
             <div className="nt-scroll min-h-0 flex-1">
-                {/* 头部：大封面 + 标题 + 播放 */}
-                <div className="flex gap-4 px-4 pb-4 pt-2">
-                    <div
-                        className="h-[30vw] max-h-[150px] min-h-[92px] w-[30vw] max-w-[150px] min-w-[92px] shrink-0 overflow-hidden rounded-xl"
-                        style={placeholderTint(String(collection.id), isDaylight)}
-                    >
-                        {detail?.coverUrl && (
-                            <img src={detail.coverUrl} alt="" className="h-full w-full object-cover" />
-                        )}
-                    </div>
-                    <div className="flex min-w-0 flex-1 flex-col justify-end gap-2">
-                        <h1 className="line-clamp-2 nt-t-display" style={{ color: 'var(--nt-text)' }}>
-                            {title}
-                        </h1>
-                        {detail?.creator && (
-                            <span className="truncate nt-t-meta" style={{ color: 'var(--nt-text-muted)' }}>
-                                {detail.creator.nickname}
-                            </span>
-                        )}
-                        <span className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
-                            {tracks.length} 首
+                {/* 标题 / 创作者 / 曲数：落在渐变带下方 */}
+                <div className="flex flex-col gap-1 px-4 pb-3 pt-1">
+                    <h1 className="line-clamp-2 nt-t-display" style={{ color: 'var(--nt-text)' }}>
+                        {title}
+                    </h1>
+                    {detail?.creator && (
+                        <span className="truncate nt-t-meta" style={{ color: 'var(--nt-text-muted)' }}>
+                            {detail.creator.nickname}
                         </span>
-                    </div>
+                    )}
+                    <span className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
+                        {tracks.length} 首
+                    </span>
                 </div>
 
                 {/* 操作条 */}

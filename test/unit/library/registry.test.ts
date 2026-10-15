@@ -164,11 +164,16 @@ describe('library suite registry', () => {
         vi.unstubAllGlobals();
     });
 
-    it('only the grid brings a transition layer', () => {
-        expect(listLibrarySuiteOverlays().map(overlay => overlay.suiteId)).toEqual(['grid']);
+    it('brings a transition layer for grid and netease, none for the TUI', () => {
+        // 2026-10-15：netease 加了自己的「封面飞出」转场层，与 grid 的移形换影并列。
+        // TUI 仍然没有 —— 它的 entry 不声明任何转场。
+        expect(listLibrarySuiteOverlays().map(overlay => overlay.suiteId)).toEqual(['grid', 'netease']);
         expect(resolveLibrarySurface('collection', 'tui').transitions).toBeUndefined();
         expect(resolveLibrarySurface('artist', 'tui').transitions).toBeUndefined();
         expect(resolveLibrarySurface('artist', 'grid').transitions?.beforeBack).toBeTypeOf('function');
+        // netease 的转场层必须**在模块加载时就挂上**：宿主是顶层跑一次 listLibrarySuiteOverlays()
+        // 收集的，那时它的 surface 还没加载、懒加载灌不进来。挂不上就没有封面飞行。
+        expect(resolveLibrarySurface('collection', 'netease').transitions?.Overlay).toBeTypeOf('function');
     });
 
     it('mounts a stage only for bravais; grid, the TUI and unknown ids have none (B1, B6)', () => {

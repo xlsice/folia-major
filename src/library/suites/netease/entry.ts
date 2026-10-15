@@ -19,19 +19,45 @@ import type { LibraryActionId, LibrarySuiteManifest, LibrarySuiteTransitions } f
 // 四个 surface 组件一律 React.lazy，没选 netease 的人不加载它的任何 chunk。
 
 /**
- * 本套的转场声明（Win8 式整层推移）。
+ * 本套的转场声明（封面飞出）。
  *
- * 它也是空壳：推移参数和读「降低动态效果」的闸门都在 ./neteaseLayerTransition 里，
- * 那是懒加载模块，本文件不能静态 import 它 —— registry 是 eager glob 扫所有 entry 的，
- * 静态 import 会把整块推移（含 framer-motion 与动效 store）拉进**每个**用户的首屏，
+ * `layer` / `backdrop` / `beforeBack` 走空壳：那些参数和读「降低动态效果」的闸门都在
+ * ./neteaseLayerTransition 里，那是懒加载模块，本文件不能静态 import 它 —— registry 是 eager glob
+ * 扫所有 entry 的，静态 import 会把整块转场（含 framer-motion 与动效 store）拉进**每个**用户的首屏，
  * 哪怕他这辈子没选过 netease。test/unit/library/suiteEntries.test.ts 就是守这条的。
  *
  * 灌入时机是确定的：下面四个 lazy loader 里的任何一个 resolve 时就 Object.assign，
  * 而宿主只在某套 suite 的 surface 真正要渲染时才去读 `transitions.layer`。
  * 也就是说 —— 读到它时它必然已经就位，不存在「第一次打开没动画、第二次才有」。
  * 没选 netease 的人连这个 chunk 都不会下载。
+ *
+ * ⛔ `Overlay` 反过来**必须**在这里就位，不能等懒加载：`listLibrarySuiteOverlays()` 是宿主在
+ * **模块加载时**跑一次的（GridViewOverlayHost.tsx 顶层 `const SUITE_OVERLAYS = …`），
+ * 那时本套的 surface 一个都还没加载。所以它不能由 attachTransitions 灌进来。
+ * 绕法是一个内联的壳：壳本身只 import react（合法），真正的飞行层在里面 import()，
+ * 且**只在 enabled 为真时**才加载 —— 也就是「当前负责集合层的就是 netease」的时候。
+ * 没选 netease 的人不会下载这个 chunk。
+ *
+ * ⚠️ 本文件是 `.ts` 不是 `.tsx`，所以壳里用 React.createElement 而不是 JSX。
  */
-const transitions: LibrarySuiteTransitions = {};
+const NeteaseMorphShell: React.FC<{ enabled: boolean }> = ({ enabled }) => {
+    const [Layer, setLayer] = React.useState<React.ComponentType<{ enabled: boolean }> | null>(null);
+    React.useEffect(() => {
+        if (!enabled || Layer) return;
+        let alive = true;
+        void import('./NeteaseCollectionMorph').then(module => {
+            if (alive) setLayer(() => module.NeteaseCollectionMorph);
+        });
+        return () => { alive = false; };
+    }, [enabled, Layer]);
+    // 飞行层没就位之前不画任何东西：宁可这一次没有飞行（宿主那一层淡入照样成立），
+    // 也不要先闪一下再补一段动画。
+    return Layer ? React.createElement(Layer, { enabled }) : null;
+};
+
+const transitions: LibrarySuiteTransitions = {
+    Overlay: ({ enabled }) => React.createElement(NeteaseMorphShell, { enabled }),
+};
 
 const attachTransitions = (module: { neteaseTransitions?: LibrarySuiteTransitions }): void => {
     if (module.neteaseTransitions) Object.assign(transitions, module.neteaseTransitions);
@@ -118,9 +144,8 @@ const netease: LibrarySuiteManifest = {
         artist: { component: NeteaseArtist, actions: ARTIST_ACTIONS },
         account: { component: NeteaseAccount, actions: ACCOUNT_ACTIONS },
     },
-    // 整层推移（Win8 式平行推移）+ 它自己的降级闸门，都由懒加载模块在解析时灌进上面的空壳。
-    // 这里**不声明** Overlay 与 beforePush / beforeBack：那两套是 grid 的移形换影要的，
-    // 本套的推移由宿主直接搬动真实容器，不需要一层合成画面，也不需要提前量落点。
+    // 封面飞出的合成层在上面的空壳里（必须模块加载时就在，见 attachTransitions 上方那段）；
+    // layer / backdrop / beforeBack 由懒加载模块在解析时灌进同一个空壳。
     transitions,
 };
 
