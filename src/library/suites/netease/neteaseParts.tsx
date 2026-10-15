@@ -38,7 +38,9 @@ export const NeteaseTabBar: React.FC<{
                         onClick={() => onChange(tab.id)}
                         aria-current={active ? 'page' : undefined}
                         className="flex flex-1 flex-col items-center justify-center gap-0.5 transition-colors"
-                        style={{ color: active ? 'var(--nt-accent)' : 'var(--nt-text-muted)' }}
+                        // tab 选中态是 12px 小字，不是大字：强调色填充色只有 3.4:1，
+                        // 当小字用会不合格，所以走单独校准过的 --nt-accent-text。
+                        style={{ color: active ? 'var(--nt-accent-text)' : 'var(--nt-text-muted)' }}
                     >
                         {tab.icon}
                         {/* 原来 text-[10px] leading-none：行高等于字号，汉字/假名有裁切风险。 */}
@@ -182,7 +184,7 @@ export const NeteaseMoreMenu: React.FC<{
                             }}
                             className="block w-full px-3 py-3 text-left nt-t-label transition-colors"
                             style={{
-                                color: action.tone === 'danger' ? '#e5484d' : 'var(--nt-text)',
+                                color: action.tone === 'danger' ? 'var(--nt-danger)' : 'var(--nt-text)',
                             }}
                         >
                             {action.label}
@@ -201,7 +203,7 @@ export const NeteaseTrackIndex: React.FC<{
 }> = ({ index, isPlaying }) => (
     <span
         className="w-6 shrink-0 text-center nt-t-meta"
-        style={{ color: isPlaying ? 'var(--nt-accent)' : 'var(--nt-text-faint)' }}
+        style={{ color: isPlaying ? 'var(--nt-accent-text)' : 'var(--nt-text-faint)' }}
     >
         {isPlaying ? (
             <span className="inline-flex items-end gap-[2px]" aria-label="now playing">

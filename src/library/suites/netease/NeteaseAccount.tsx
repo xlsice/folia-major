@@ -143,7 +143,7 @@ const LoginCard: React.FC<{
             <div className="flex justify-center px-6 pb-4 pt-1">
                 {backendDown ? (
                     <div className="flex flex-col items-center gap-2 px-4 py-6 text-center">
-                        <AlertCircle size={26} style={{ color: '#e5484d' }} />
+                        <AlertCircle size={26} style={{ color: 'var(--nt-danger)' }} />
                         <p className="nt-t-meta" style={{ color: 'var(--nt-text-muted)' }}>登录服务未运行</p>
                         {can.has('account-backend-restart') && (
                             <button
