@@ -28,6 +28,7 @@ import type { NeteaseTabGlyphId } from './neteaseTabGlyphs';
 // entry.ts 不能静态 import 推移模块（registry 是 eager glob 扫所有 entry 的），
 // 由本模块把本套的转场声明转出去，四个 lazy loader 在 resolve 时灌进 manifest 的空壳。
 export { neteaseTransitions } from './neteaseLayerTransition';
+import { NeteaseCloudText } from './NeteaseCloudText';
 import {
     NeteaseEmpty,
     NeteaseHeader,
@@ -357,13 +358,23 @@ const CollectionCard: React.FC<CollectionCardProps> = ({
                     )}
                 </motion.div>
             </div>
-            <span className="truncate nt-t-item" style={{ color: 'var(--nt-text)' }}>
-                {collection.name}
-            </span>
+            {/* truncate 必须挂在组件自己的根元素上：省略号只对「元素里直接是行内内容」
+                生效，外面再包一层 span 就没有了。词不做横向位移同理 ——
+                见 NeteaseCloudText 开头关于裁剪的说明。 */}
+            <NeteaseCloudText
+                text={collection.name}
+                tier="item"
+                className="truncate nt-t-item"
+                style={{ color: 'var(--nt-text)' }}
+            />
             {typeof collection.trackCount === 'number' && (
-                <span className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
-                    {collection.trackCount} 首
-                </span>
+                <NeteaseCloudText
+                    text={`${collection.trackCount} 首`}
+                    tier="meta"
+                    delay={0.05}
+                    className="nt-t-meta"
+                    style={{ color: 'var(--nt-text-faint)' }}
+                />
             )}
         </motion.button>
     );
@@ -608,11 +619,9 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                                     </span>
                                 )}
                             </span>
-                            <span className="nt-t-item" style={{ color: 'var(--nt-text)' }}>
-                                每日推荐
-                            </span>
+                            <NeteaseCloudText text="每日推荐" tier="item" className="nt-t-item" style={{ color: 'var(--nt-text)' }} />
                             {dailyCount > 0 && (
-                                <span className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>{dailyCount} 首</span>
+                                <NeteaseCloudText text={`${dailyCount} 首`} tier="meta" delay={0.05} className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }} />
                             )}
                         </button>
                         <button
@@ -633,7 +642,7 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                                     </span>
                                 )}
                             </span>
-                            <span className="nt-t-item" style={{ color: 'var(--nt-text)' }}>私人 FM</span>
+                            <NeteaseCloudText text="私人 FM" tier="item" className="nt-t-item" style={{ color: 'var(--nt-text)' }} />
                         </button>
                     </div>
                 )}
@@ -708,12 +717,8 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                         ) : null}
                     </span>
                     <div className="min-w-0 flex-1">
-                        <div className="truncate nt-t-display" style={{ color: 'var(--nt-text)' }}>
-                            {user.nickname}
-                        </div>
-                        <div className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
-                            {onlineCollections.length} 个歌单
-                        </div>
+                        <NeteaseCloudText text={user.nickname} tier="display" className="truncate nt-t-display" style={{ color: 'var(--nt-text)' }} />
+                        <NeteaseCloudText text={`${onlineCollections.length} 个歌单`} tier="meta" delay={0.06} className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }} />
                     </div>
                 </div>
 
@@ -746,8 +751,8 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                         <span className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: 'var(--nt-hover)' }}>
                             <ListMusic size={17} style={{ color: 'var(--nt-text-muted)' }} />
                         </span>
-                        <span className="flex-1 nt-t-title" style={{ color: 'var(--nt-text)' }}>全部歌曲</span>
-                        <span className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>{localSongs.length}</span>
+                        <NeteaseCloudText text="全部歌曲" tier="title" className="flex-1 nt-t-title" style={{ color: 'var(--nt-text)' }} />
+                        <NeteaseCloudText text={String(localSongs.length)} tier="meta" delay={0.05} className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }} />
                     </div>
                     {localCards.map(item => (
                         <button
@@ -760,7 +765,7 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                             <span className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: 'var(--nt-hover)' }}>
                                 <FolderOpen size={16} style={{ color: 'var(--nt-text-muted)' }} />
                             </span>
-                            <span className="flex-1 truncate text-left nt-t-item" style={{ color: 'var(--nt-text)' }}>{item.name}</span>
+                            <NeteaseCloudText text={item.name} tier="item" className="flex-1 truncate text-left nt-t-item" style={{ color: 'var(--nt-text)' }} />
                         </button>
                     ))}
                 </div>
@@ -831,7 +836,7 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                     <span className="flex h-10 w-10 items-center justify-center rounded-lg" style={{ background: 'var(--nt-hover)' }}>
                         <Radio size={18} style={{ color: 'var(--nt-text-muted)' }} />
                     </span>
-                    <span className="flex-1 text-left nt-t-item" style={{ color: 'var(--nt-text)' }}>连接自建音乐库</span>
+                    <NeteaseCloudText text="连接自建音乐库" tier="item" className="flex-1 text-left nt-t-item" style={{ color: 'var(--nt-text)' }} />
                 </button>
             </div>
         </>

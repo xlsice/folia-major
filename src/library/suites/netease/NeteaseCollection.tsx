@@ -10,6 +10,7 @@ import { NETEASE_HERO_ATTR, NETEASE_HERO_KEY_ATTR, getNeteaseMorphSnapshot, subs
 import { getNeteaseCollectionScrollTop, setNeteaseCollectionScrollTop, useRestoredScrollTop } from './neteaseSession';
 import { useNeteaseCurrentKey, useNeteaseIsPlaying, useNeteaseScopePlaying } from './useNeteasePlayback';
 import { getPlaybackSongKey } from '../../../utils/appPlaybackGuards';
+import { NeteaseCloudText } from './NeteaseCloudText';
 import {
     NeteaseCollapsible,
     NeteaseEmpty,
@@ -190,19 +191,28 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
                     onClick={() => playback.playTrack(track, tracks)}
                     className="flex min-w-0 flex-1 flex-col items-start py-0.5 text-left"
                 >
-                    <span
+                    <NeteaseCloudText
+                        text={track.name}
+                        tier="item"
                         className="max-w-full truncate nt-t-item"
                         style={{ color: 'var(--nt-text)' }}
-                    >
-                        {track.name}
-                    </span>
-                    <span className="max-w-full truncate nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
-                        {artistName}
-                    </span>
+                    />
+                    <NeteaseCloudText
+                        text={artistName}
+                        tier="meta"
+                        delay={0.04}
+                        className="max-w-full truncate nt-t-meta"
+                        style={{ color: 'var(--nt-text-faint)' }}
+                    />
                 </button>
-                <span className="shrink-0 nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
-                    {formatTrackDuration(track.durationMs)}
-                </span>
+                {/* 时长也走浮云：否则歌名在浮、时长整列先闪现，读起来顺序是反的 */}
+                <NeteaseCloudText
+                    text={formatTrackDuration(track.durationMs)}
+                    tier="meta"
+                    delay={0.08}
+                    className="shrink-0 nt-t-meta"
+                    style={{ color: 'var(--nt-text-faint)' }}
+                />
                 {/* ⋯ 常显 */}
                 <NeteaseMoreMenu label="更多操作" actions={trackActions(track, index)} />
             </div>
@@ -299,15 +309,19 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
                 {/* 标题 / 创作者 / 曲数：落在渐变带下方 */}
                 <div className="flex flex-col gap-1 px-4 pb-3 pt-1">
                     <h1 className="line-clamp-2 nt-t-display" style={{ color: 'var(--nt-text)' }}>
-                        {title}
+                        <NeteaseCloudText text={title} tier="display" />
                     </h1>
                     {detail?.creator && (
-                        <span className="truncate nt-t-meta" style={{ color: 'var(--nt-text-muted)' }}>
-                            {detail.creator.nickname}
-                        </span>
+                        <NeteaseCloudText
+                            text={detail.creator.nickname}
+                            tier="meta"
+                            delay={0.06}
+                            className="truncate nt-t-meta"
+                            style={{ color: 'var(--nt-text-muted)' }}
+                        />
                     )}
                     <span className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
-                        {tracks.length} 首
+                        <NeteaseCloudText text={`${tracks.length} 首`} tier="meta" delay={0.1} />
                     </span>
                 </div>
 

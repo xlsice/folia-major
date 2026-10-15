@@ -11,6 +11,7 @@ import { paletteToCssVars, placeholderTint, isAndroidShell, type NeteasePalette 
 import { useSafeInsets } from './useSafeInsets';
 import { useReducedMotionFor } from '../../../hooks/useReducedMotionFor';
 import { NeteaseTabGlyph, TAB_PILL_SIZE, type NeteaseTabGlyphId } from './neteaseTabGlyphs';
+import { NeteaseCloudText } from './NeteaseCloudText';
 
 /**
  * 底部标签栏。几何照网易云手机版的真机实测（uiautomator dump，单位 dp）：
@@ -126,7 +127,7 @@ export const NeteaseTabBar: React.FC<{
                             >
                                 {tab.icon}
                                 {/* 原来 text-[10px] leading-none：行高等于字号，汉字/假名有裁切风险。 */}
-                                <span className="nt-t-label">{tab.label}</span>
+                                <NeteaseCloudText text={tab.label} tier="meta" className="nt-t-label" />
                             </span>
                         </button>
                     );
@@ -151,11 +152,16 @@ export const NeteaseHeader: React.FC<{
             : { justifyContent: 'flex-start' }}
     >
         {leading}
-        <h1
-            className={`nt-t-display min-w-0 flex-1 truncate ${align === 'left' ? 'text-left' : 'text-center'}`}
-            style={{ color: 'var(--nt-text)' }}
-        >
-            {title}
+        <h1 className={`min-w-0 flex-1 ${align === 'left' ? 'text-left' : 'text-center'}`}>
+            {/* truncate 直接挂在组件根元素上：省略号只对「元素里直接是行内内容」生效，
+                外面再包一层 span 就没有了。词用 inline-block 而不是 flex 子项，
+                且不做横向位移 —— 见 NeteaseCloudText 开头关于裁剪的说明。 */}
+            <NeteaseCloudText
+                text={title}
+                tier="display"
+                className="truncate nt-t-display"
+                style={{ color: 'var(--nt-text)' }}
+            />
         </h1>
         {trailing ? <div className="flex shrink-0 items-center gap-1">{trailing}</div> : null}
     </header>
@@ -334,7 +340,7 @@ export const NeteaseTrackIndex: React.FC<{
                 ))}
             </span>
         ) : (
-            index
+            <NeteaseCloudText text={String(index)} tier="meta" />
         )}
     </span>
 );
@@ -397,12 +403,19 @@ export const NeteaseMiniPlayer: React.FC<{
             </div>
 
             <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate nt-t-item" style={{ color: 'var(--nt-text)' }}>
-                    {title}
-                </span>
-                <span className="truncate nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
-                    {subtitle}
-                </span>
+                <NeteaseCloudText
+                    text={title}
+                    tier="item"
+                    className="truncate nt-t-item"
+                    style={{ color: 'var(--nt-text)' }}
+                />
+                <NeteaseCloudText
+                    text={subtitle}
+                    tier="meta"
+                    delay={0.04}
+                    className="truncate nt-t-meta"
+                    style={{ color: 'var(--nt-text-faint)' }}
+                />
             </div>
 
             <button
@@ -481,9 +494,11 @@ export const NeteasePlayButton: React.FC<{
 /** 分区标题（列表上方的灰字小标题）。 */
 export const NeteaseSectionTitle: React.FC<{ children: React.ReactNode; count?: number }> = ({ children, count }) => (
     <div className="flex items-baseline gap-2 px-4 pb-2 pt-6">
-        <span className="nt-t-title" style={{ color: 'var(--nt-text)' }}>{children}</span>
+        {typeof children === 'string'
+            ? <NeteaseCloudText text={children} tier="title" className="nt-t-title" style={{ color: 'var(--nt-text)' }} />
+            : <span className="nt-t-title" style={{ color: 'var(--nt-text)' }}>{children}</span>}
         {typeof count === 'number' && (
-            <span className="nt-t-meta" style={{ color: 'var(--nt-text-muted)' }}>{count}</span>
+            <NeteaseCloudText text={String(count)} tier="meta" className="nt-t-meta" style={{ color: 'var(--nt-text-muted)' }} />
         )}
     </div>
 );
@@ -502,8 +517,8 @@ export const NeteaseEmpty: React.FC<{ message: string; hint?: string; fill?: boo
     <div
         className={`flex flex-col items-center justify-center gap-1 px-8 text-center ${fill ? 'min-h-full py-16' : 'py-16'}`}
     >
-        <p className="nt-t-title" style={{ color: 'var(--nt-text-muted)' }}>{message}</p>
-        {hint && <p className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>{hint}</p>}
+        <NeteaseCloudText text={message} tier="title" className="nt-t-title" style={{ color: 'var(--nt-text-muted)' }} />
+        {hint && <NeteaseCloudText text={hint} tier="meta" delay={0.06} className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }} />}
     </div>
 );
 
@@ -517,7 +532,7 @@ export const NeteaseCollapsible: React.FC<{ label: string; children: React.React
                 onClick={() => setOpen(value => !value)}
                 className="flex w-full items-center justify-between px-4 py-3"
             >
-                <span className="nt-t-item" style={{ color: 'var(--nt-text-muted)' }}>{label}</span>
+                <NeteaseCloudText text={label} tier="item" className="nt-t-item" style={{ color: 'var(--nt-text-muted)' }} />
                 <ChevronDown
                     size={16}
                     style={{

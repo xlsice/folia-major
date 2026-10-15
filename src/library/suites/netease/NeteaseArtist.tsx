@@ -5,6 +5,7 @@ import type { SongResult } from '../../../types';
 import type { LibraryArtistSurfaceProps } from '../../core/contracts/suite';
 import { buildNeteasePalette, placeholderTint } from './neteaseTheme';
 import { NeteaseEmpty, NeteaseMoreMenu, NeteasePlayButton, NeteaseShell, NeteaseSectionTitle } from './neteaseParts';
+import { NeteaseCloudText } from './NeteaseCloudText';
 import { useNeteaseScopePlaying } from './useNeteasePlayback';
 
 // entry.ts 不能静态 import 推移模块，由本模块把转场声明转出去。见 NeteaseHome 里的同一句说明。
@@ -50,9 +51,7 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                     style={{ width: 'var(--nt-touch-min)', height: 'var(--nt-touch-min)' }}>
                     <ChevronLeft size={22} style={{ color: 'var(--nt-text)' }} />
                 </button>
-                <span className="min-w-0 flex-1 truncate px-1 nt-t-item" style={{ color: 'var(--nt-text)' }}>
-                    {artistName}
-                </span>
+                <NeteaseCloudText text={artistName} tier="item" className="min-w-0 flex-1 truncate px-1 nt-t-item" style={{ color: 'var(--nt-text)' }} />
                 {can.has('reload') && (
                     <NeteaseMoreMenu
                         label="更多"
@@ -72,7 +71,9 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                             <img src={snapshot.detail.coverUrl} alt="" className="h-full w-full object-cover" />
                         )}
                     </div>
-                    <h1 className="mt-1 nt-t-display" style={{ color: 'var(--nt-text)' }}>{artistName}</h1>
+                    <h1 className="mt-1 nt-t-display" style={{ color: 'var(--nt-text)' }}>
+                        <NeteaseCloudText text={artistName} tier="display" />
+                    </h1>
                 </div>
 
                 {snapshot?.status === 'loading' && !topSongs.length && !albums.length && (
@@ -96,7 +97,7 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                                 }}
                             />
                             <span className="nt-t-title" style={{ color: 'var(--nt-text)' }}>
-                                热门歌曲
+                                <NeteaseCloudText text="热门歌曲" tier="title" />
                             </span>
                         </div>
                         {can.has('enqueue-scope') && (
@@ -107,7 +108,7 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                                     className="rounded-full px-3 py-2 nt-t-label"
                                     style={{ background: 'var(--nt-hover)', color: 'var(--nt-text-muted)' }}
                                 >
-                                    收藏热门歌曲
+                                    <NeteaseCloudText text="收藏热门歌曲" tier="meta" delay={0.06} />
                                 </button>
                             </div>
                         )}
@@ -118,21 +119,26 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                                     className="flex items-center gap-3 px-4 py-3"
                                     style={{ borderTop: index === 0 ? 'none' : '1px solid var(--nt-divider)' }}
                                 >
-                                    <span className="w-5 shrink-0 text-center nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
-                                        {index + 1}
-                                    </span>
+                                    <NeteaseCloudText text={String(index + 1)} tier="meta" className="w-5 shrink-0 text-center nt-t-meta" style={{ color: 'var(--nt-text-faint)' }} />
                                     <button
                                         type="button"
                                         disabled={!isInteractive}
                                         onClick={() => playback.playTrack(track, topSongs)}
                                         className="flex min-w-0 flex-1 flex-col items-start text-left"
                                     >
-                                        <span className="max-w-full truncate nt-t-item" style={{ color: 'var(--nt-text)' }}>
-                                            {track.name}
-                                        </span>
-                                        <span className="max-w-full truncate nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
-                                            {track.album?.name ?? ''}
-                                        </span>
+                                        <NeteaseCloudText
+                                            text={track.name}
+                                            tier="item"
+                                            className="max-w-full truncate nt-t-item"
+                                            style={{ color: 'var(--nt-text)' }}
+                                        />
+                                        <NeteaseCloudText
+                                            text={track.album?.name ?? ''}
+                                            tier="meta"
+                                            delay={0.04}
+                                            className="max-w-full truncate nt-t-meta"
+                                            style={{ color: 'var(--nt-text-faint)' }}
+                                        />
                                     </button>
                                     <NeteaseMoreMenu
                                         label="更多操作"
@@ -172,11 +178,15 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                                             <img src={album.coverUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
                                         )}
                                     </div>
-                                    <span className="truncate nt-t-item" style={{ color: 'var(--nt-text)' }}>{album.name}</span>
+                                    <NeteaseCloudText text={album.name} tier="item" className="truncate nt-t-item" style={{ color: 'var(--nt-text)' }} />
                                     {album.publishedAt ? (
-                                        <span className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
-                                            {new Date(album.publishedAt).getFullYear()}
-                                        </span>
+                                        <NeteaseCloudText
+                                            text={String(new Date(album.publishedAt).getFullYear())}
+                                            tier="meta"
+                                            delay={0.05}
+                                            className="nt-t-meta"
+                                            style={{ color: 'var(--nt-text-faint)' }}
+                                        />
                                     ) : null}
                                 </button>
                             ))}
@@ -193,7 +203,7 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                             className="rounded-full px-4 py-2 nt-t-label"
                             style={{ background: 'var(--nt-hover)', color: 'var(--nt-text-muted)' }}
                         >
-                            继续加载专辑
+                            <NeteaseCloudText text="继续加载专辑" tier="meta" />
                         </button>
                     </div>
                 )}
