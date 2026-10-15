@@ -1,3 +1,6 @@
+// Must stay the first import: seeds localStorage before any store reads its fallback,
+// and before installConsoleLogCapture() picks up console_log_filters.
+import './config/applyDefaultSettings';
 import { Buffer } from 'buffer';
 import { installGlobalVisualizerFrameRateLimiter } from './utils/frameRateLimiter';
 import { installConsoleLogCapture } from './utils/consoleLogBuffer';
