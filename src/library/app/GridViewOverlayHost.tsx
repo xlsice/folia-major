@@ -196,6 +196,12 @@ const GridViewOverlayHost: React.FC<GridViewOverlayHostProps> = ({
     // 背景板和转场启用状态由实际渲染这一层的 suite 解析；未声明背景板时使用中性淡入淡出。
     const backdrop = useLibraryBackdrop(transitionOwner.transitions?.backdrop);
     const activeTransitions = backdrop.enabled ? transitionOwner.transitions : undefined;
+    // 声明了整层推移的 suite（如 netease 的 Win8 平行推移）由 suite 自己把整层推移接进减弱动态效果：
+    // 降级时它把 layer 撤掉，这里随之回到原来的硬切与层叠顺序。未声明的 suite 这三行都是 undefined。
+    const layerTransition = activeTransitions?.layer;
+    const layerMotion = layerTransition
+        ? { duration: layerTransition.duration, ease: layerTransition.ease }
+        : undefined;
     // 生效 suite 的 stage（B1；grid / TUI 没有，未知 id 回退 grid 也没有）。当前层由带 stage 的 suite 渲染时，
     // 画面归 stage：不垫背景板、不藏首页。当前层回退到 grid 时与没有 stage 一样。
     const stage = resolveLibraryStage(suiteId);
@@ -616,18 +622,85 @@ const GridViewOverlayHost: React.FC<GridViewOverlayHostProps> = ({
         ? localLibraryCatalog.assignments.find(assignment => assignment.songId === matchingSongId)
         : undefined;
 
+    /**
+     * 集合层 / 歌手层的本体。key 带上实际渲染它的 suite：切换 suite 时集合层换一个实例；两个都回退到网格的
+     * suite 之间切换（例如歌手页）不重新挂载。Suspense 给 lazy 的 suite 组件用，即时组件不会挂起。
+     *
+     * 抽成变量是因为宿主现在有两种摆法：声明了整层推移的 suite 要多包一层 motion 容器承载位移，
+     * 没声明的直接就是 AnimatePresence 的子节点（结构与之前逐字相同）。两条路共用这一份，不复制渲染代码。
+     */
+    const activeLayerSurface = !displaySelectedCollection
+        ? null
+        : displaySelectedCollection.type === 'artist'
+            ? (
+                <React.Suspense key={`${artistSurface.suiteId}:${selectedCollectionKey}`} fallback={null}>
+                    <ArtistSurface
+                        collection={displaySelectedCollection}
+                        resource={artistResource}
+                        playback={playbackPort}
+                        theme={surfaceProps.theme}
+                        isDaylight={isDaylight}
+                        isInteractive={isInteractive}
+                        onEditEntity={setEditingEntityId}
+                        declaredActions={artistSurface.declaredActions}
+                        onBack={handleBackCollection}
+                        onDone={handleDoneCollection}
+                        onOpenAlbum={handlePushAlbumCollection}
+                        onOpenArtist={handlePushArtistCollection}
+                        onPopTo={onPopCollectionTo}
+                    />
+                </React.Suspense>
+            )
+            : (
+                <React.Suspense key={`${collectionSurface.suiteId}:${selectedCollectionKey}`} fallback={null}>
+                    <CollectionSurface
+                        collection={displaySelectedCollection}
+                        resource={collectionResource}
+                        playback={playbackPort}
+                        mutations={collectionMutations}
+                        localSongs={surfaceProps.localSongs}
+                        theme={surfaceProps.theme}
+                        isDaylight={isDaylight}
+                        isInteractive={isInteractive}
+                        onStatusMessage={surfaceProps.onStatusMessage}
+                        currentUserId={surfaceProps.user?.id}
+                        declaredActions={collectionSurface.declaredActions}
+                        onBack={handleBackCollection}
+                        onDone={handleDoneCollection}
+                        onOpenAlbum={handlePushAlbumCollection}
+                        onOpenArtist={handlePushArtistCollection}
+                        onPopTo={onPopCollectionTo}
+                    />
+                </React.Suspense>
+            );
+
     return (
         <>
-            <div
-                className="absolute inset-0"
+            {/*
+                首页层。声明了整层推移的 suite 要在推移期间看见这一页向左退，所以：
+                - 打开集合层时仍然 visible（它会停在 behind，opacity 归零，由不透明的集合页盖住）；
+                - z-10 抬到背景板之上，否则推移时被 z-49 的不透明底板整页盖住（与 NeteaseShell 自己
+                  抬 z-[110] 是同一条层叠契约的另一半）。
+                未声明 layer 时这条仍是原来的普通 div + z-auto，行为逐字不变。
+            */}
+            <motion.div
+                className={`absolute inset-0${layerTransition ? ' z-10' : ''}`}
                 aria-hidden={Boolean(selectedCollection)}
+                initial={false}
+                animate={layerTransition ? (selectedCollection ? 'behind' : 'front') : undefined}
+                variants={layerTransition
+                    ? { front: layerTransition.homeFront, behind: layerTransition.homeBehind }
+                    : undefined}
+                transition={layerMotion}
                 style={{
-                    visibility: layerPresentation.hideHome ? 'hidden' : 'visible',
+                    visibility: layerTransition && selectedCollection
+                        ? 'visible'
+                        : (layerPresentation.hideHome ? 'hidden' : 'visible'),
                     pointerEvents: selectedCollection ? 'none' : 'auto',
                 }}
             >
                 {children(openGridView, isInteractive && !selectedCollection)}
-            </div>
+            </motion.div>
             {/* 生效 suite 的常驻舞台：首页之上、背景板与集合层之下；始终占这个位置，打开 / 关闭集合不重挂。 */}
             <LibrarySuiteStageSlot
                 stage={stage}
@@ -651,7 +724,10 @@ const GridViewOverlayHost: React.FC<GridViewOverlayHostProps> = ({
                             ? { opacity: 0, transition: backdrop.exit }
                             : { opacity: 0 }}
                         transition={backdrop.enter}
-                        className="fixed inset-0 z-[49] pointer-events-none"
+                        // 声明了整层推移时，这块底板要沉到**首页层之下**（首页层被抬到 z-10）：
+                        // 推移时首页向左退出的那一条要让底色透出来，而不是露出底下还在跑的 visualizer。
+                        // 没声明 layer 时保持 z-[49]，此时首页被 visibility:hidden，它垫不垫都一样。
+                        className={`fixed inset-0 pointer-events-none${layerTransition ? ' z-0' : ' z-[49]'}`}
                         style={{ backgroundColor: 'var(--bg-color)' }}
                     />
                 )}
@@ -660,50 +736,31 @@ const GridViewOverlayHost: React.FC<GridViewOverlayHostProps> = ({
                 <Overlay key={overlaySuiteId} enabled={backdrop.enabled && transitionOwner.suiteId === overlaySuiteId} />
             ))}
             <AnimatePresence initial={false}>
-                {displaySelectedCollection && (
-                    // key 带上实际渲染它的 suite：切换 suite 时集合层换一个实例；两个都回退到网格的 suite 之间
-                    // 切换（例如歌手页）不重新挂载。Suspense 给 lazy 的 suite 组件用，即时组件不会挂起。
-                    displaySelectedCollection.type === 'artist' ? (
-                        <React.Suspense key={`${artistSurface.suiteId}:${selectedCollectionKey}`} fallback={null}>
-                            <ArtistSurface
-                                collection={displaySelectedCollection}
-                                resource={artistResource}
-                                playback={playbackPort}
-                                theme={surfaceProps.theme}
-                                isDaylight={isDaylight}
-                                isInteractive={isInteractive}
-                                onEditEntity={setEditingEntityId}
-                                declaredActions={artistSurface.declaredActions}
-                                onBack={handleBackCollection}
-                                onDone={handleDoneCollection}
-                                onOpenAlbum={handlePushAlbumCollection}
-                                onOpenArtist={handlePushArtistCollection}
-                                onPopTo={onPopCollectionTo}
-                            />
-                        </React.Suspense>
-                    ) : (
-                        <React.Suspense key={`${collectionSurface.suiteId}:${selectedCollectionKey}`} fallback={null}>
-                            <CollectionSurface
-                                collection={displaySelectedCollection}
-                                resource={collectionResource}
-                                playback={playbackPort}
-                                mutations={collectionMutations}
-                                localSongs={surfaceProps.localSongs}
-                                theme={surfaceProps.theme}
-                                isDaylight={isDaylight}
-                                isInteractive={isInteractive}
-                                onStatusMessage={surfaceProps.onStatusMessage}
-                                currentUserId={surfaceProps.user?.id}
-                                declaredActions={collectionSurface.declaredActions}
-                                onBack={handleBackCollection}
-                                onDone={handleDoneCollection}
-                                onOpenAlbum={handlePushAlbumCollection}
-                                onOpenArtist={handlePushArtistCollection}
-                                onPopTo={onPopCollectionTo}
-                            />
-                        </React.Suspense>
-                    )
-                )}
+                {displaySelectedCollection && (layerTransition ? (
+                    // 整层推移的承载容器：必须是 AnimatePresence 的**直接子节点**才能吃到退场 ——
+                    // 返回时导航 store 先清空，这一层会留在 DOM 里把退场跑完才卸载；少了它返回就是硬切。
+                    // fixed inset-0 与视口同尺寸，带 transform 也不会让里面的 fixed 子元素错位。
+                    //
+                    // z-[100] 不是随便写的：这层是 position:fixed（自带层叠上下文），**整页的层序由它决定**，
+                    // 里面 NeteaseShell 自己的 z-[110] 只管它内部、与首页之间的高低。
+                    // 声明 layer 时首页容器被抬到 z-10（为了压过沉底的背景板），这里若留 auto(=0)
+                    // 就会让首页整个盖到歌单页上 —— 页面不透明也照样透出底下的首页，就是一层重影。
+                    <motion.div
+                        key={`layer:${transitionOwner.suiteId}:${selectedCollectionKey}`}
+                        className="fixed inset-0 z-[100]"
+                        initial="enter"
+                        animate="idle"
+                        exit="exit"
+                        variants={{
+                            enter: layerTransition.enter,
+                            idle: layerTransition.idle,
+                            exit: layerTransition.exit,
+                        }}
+                        transition={layerMotion}
+                    >
+                        {activeLayerSurface}
+                    </motion.div>
+                ) : activeLayerSurface)}
             </AnimatePresence>
             {/* 首页上也有（切换的是首页 surface；没有集合会话要冲刷，用首页的固定 key）；歌手页上也有（P4.3 起 TUI 实现了歌手页，
                 冲刷的是这一层歌手页的会话——键与歌手资源的 key 相同）。 */}

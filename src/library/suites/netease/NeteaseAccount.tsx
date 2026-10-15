@@ -8,6 +8,9 @@ import type { OnlineProviderId, ProviderAccountSummary } from '../../../types/on
 import { buildNeteasePalette } from './neteaseTheme';
 import { NeteaseShell } from './neteaseParts';
 
+// entry.ts 不能静态 import 推移模块，由本模块把转场声明转出去。见 NeteaseHome 里的同一句说明。
+export { neteaseTransitions } from './neteaseLayerTransition';
+
 /** 契约的文案是 {key, values?, fallback?}，翻译层在这里收口；缺 key 时退回 fallback，再退回 key 本身。 */
 const say = (message: LibraryHomeMessage | null): string => {
     if (!message) return '';

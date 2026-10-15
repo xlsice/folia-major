@@ -8,6 +8,12 @@ import type { ProviderCollection } from '../../../types/onlineMusic';
 import { buildNeteasePalette, placeholderTint } from './neteaseTheme';
 import { useSafeInsets, bottomBarPadding } from './useSafeInsets';
 import { useNeteaseIsPlaying, useNeteaseProgress } from './useNeteasePlayback';
+import { useReducedMotionFor } from '../../../hooks/useReducedMotionFor';
+import { NeteasePageSlide } from './neteaseLayerTransition';
+
+// entry.ts 不能静态 import 推移模块（registry 是 eager glob 扫所有 entry 的），
+// 由本模块把本套的转场声明转出去，四个 lazy loader 在 resolve 时灌进 manifest 的空壳。
+export { neteaseTransitions } from './neteaseLayerTransition';
 import {
     NeteaseEmpty,
     NeteaseHeader,
@@ -51,6 +57,9 @@ const TAB_LABELS: Record<HomeTabId, string> = {
     mine: '我的',
 };
 
+/** 标签栏从左到右的顺序。推移方向由它算出来：点右边的标签往左翻，点左边的往右翻。 */
+const TAB_ORDER: readonly HomeTabId[] = ['discover', 'local', 'albums', 'navidrome', 'mine'];
+
 const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
     declaredActions,
     account,
@@ -77,7 +86,18 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
     const barInset = bottomBarPadding(insets);
     const can = new Set(declaredActions.actions);
     const [tab, setTab] = React.useState<HomeTabId>('discover');
+    // 推移方向。必须和 setTab 同一个渲染里落定，退场的那一页才知道该往哪边退。
+    const [tabDirection, setTabDirection] = React.useState<1 | -1>(1);
+    // 与集合层的整层推移共用同一个动效面（collectionMorph），用户关一次两边一起停。
+    const reducedSlide = useReducedMotionFor('collectionMorph');
     const [query, setQuery] = React.useState('');
+
+    /** 切标签页并记下方向。同一个 tab 不重播动画。 */
+    const selectTab = (next: HomeTabId) => {
+        if (next === tab) return;
+        setTabDirection(TAB_ORDER.indexOf(next) > TAB_ORDER.indexOf(tab) ? 1 : -1);
+        setTab(next);
+    };
 
     // 迷你播放条的播放态与进度。之前这里是写死的 isPlaying={false}，按钮永远显示三角；
     // 点击其实一直是通的（onTogglePlayback 真实生效），坏的只是图标从不反映状态。
@@ -505,6 +525,17 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
         { id: 'mine', label: TAB_LABELS.mine, icon: <User size={18} /> },
     ];
 
+    /** 当前标签页的内容。抽出来是为了让推移组件只按 tab id 换页，不关心每页长什么样。 */
+    const renderTabContent = (current: HomeTabId) => {
+        switch (current) {
+            case 'discover': return renderDiscoverTab();
+            case 'local': return renderLocalTab();
+            case 'albums': return renderAlbumsTab();
+            case 'navidrome': return renderRemoteTab();
+            case 'mine': return renderMineTab();
+        }
+    };
+
     return (
         <NeteaseShell palette={palette}>
             <NeteaseHeader
@@ -514,19 +545,25 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                         label="更多"
                         actions={[
                             { id: 'refresh', label: '刷新', onSelect: () => void onRefreshLocalSongs() },
-                            { id: 'account', label: '账户', onSelect: () => setTab('mine') },
+                            { id: 'account', label: '账户', onSelect: () => selectTab('mine') },
                         ]}
                     />
                 )}
             />
             <NeteaseSearchBar query={query} placeholder="搜索歌单" onQueryChange={applyQuery} />
 
-            <div className="nt-scroll min-h-0 flex-1 pb-4">
-                {tab === 'discover' && renderDiscoverTab()}
-                {tab === 'local' && renderLocalTab()}
-                {tab === 'albums' && renderAlbumsTab()}
-                {tab === 'navidrome' && renderRemoteTab()}
-                {tab === 'mine' && renderMineTab()}
+            {/* 两层：外层裁切（推移时不让翻出去的半页漏到界面上），内层才滚动。
+                推移期间新旧两页同时在 DOM 里（退场那页靠 AnimatePresence 留到动画结束），
+                所以内层必须 absolute 叠在同一块地方，不能靠文档流排下去。 */}
+            <div className="relative min-h-0 flex-1 overflow-hidden">
+                <NeteasePageSlide
+                    slideKey={tab}
+                    direction={tabDirection}
+                    reduced={reducedSlide}
+                    className="nt-scroll absolute inset-0 pb-4"
+                >
+                    {renderTabContent(tab)}
+                </NeteasePageSlide>
             </div>
 
             {/* 迷你播放条：贴着 tab 栏上方。整条可点进播放页（网易云同款交互）。 */}
@@ -548,7 +585,7 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
             <NeteaseTabBar
                 tabs={tabs}
                 activeId={tab}
-                onChange={id => setTab(id as HomeTabId)}
+                onChange={id => selectTab(id as HomeTabId)}
                 bottomInset={barInset}
             />
         </NeteaseShell>

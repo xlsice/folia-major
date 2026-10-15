@@ -324,12 +324,51 @@ export type LibrarySuiteBackdrop = {
 };
 
 /**
+ * 一层页面在推移过程中的某个状态。
+ *
+ * 只开放 transform / opacity / box-shadow 三个属性：推移时两页同时在动，宿主与 visualizer 已经在抢主线程，
+ * 这里绝不能引入会触发布局或重绘的属性（width / height / filter / 背景色）。
+ */
+export type LibraryLayerVariant = {
+    /** 水平位移，百分比按各层自身宽度算（两页同宽，位移才咬得住）。 */
+    x?: string | number;
+    opacity?: number;
+    /** 进出场那一拍的前缘投影，落位后归零 —— 没有它就只是一块平移，看不出层叠。 */
+    boxShadow?: string;
+};
+
+/**
+ * suite 声明的「整层推移」：打开集合层时首页向左退、集合页从右侧推入，返回时镜像。
+ *
+ * 与 `Overlay` 的区别：Overlay 是 suite 自己画的一层合成画面（网格的移形换影），而这里是**宿主那两层真实容器**
+ * 的位移。宿主因此要做两件事：推移期间不藏首页、把背景板压到首页之下。声明即启用，不声明的 suite
+ * （grid / TUI / bravais）宿主仍走原来的结构与层叠顺序，一个字节都不变。
+ */
+export type LibrarySuiteLayerTransition = {
+    /** 首页层：没有集合层压上来时的静止态。 */
+    homeFront: LibraryLayerVariant;
+    /** 首页层：集合层压上来时 —— 旧页向左退并变暗（Win8 的旧页既位移又压暗，不是单纯淡出）。 */
+    homeBehind: LibraryLayerVariant;
+    /** 集合层：入场起点，整页在屏幕右侧之外。 */
+    enter: LibraryLayerVariant;
+    /** 集合层：在位。 */
+    idle: LibraryLayerVariant;
+    /** 集合层：退场，镜像 enter。 */
+    exit: LibraryLayerVariant;
+    /** 进出共用的一段时长与曲线（秒）。 */
+    duration: number;
+    ease: [number, number, number, number];
+};
+
+/**
  * suite 自带的集合层转场（网格的移形换影）。宿主只在「渲染当前集合层的就是这套 suite」且未关闭动态效果时调用，
  * 其它情况下 Overlay 收到 enabled=false。
  */
 export type LibrarySuiteTransitions = {
     /** 不声明则使用中性背景板，并保持本套转场钩子可用。 */
     backdrop?: LibrarySuiteBackdrop;
+    /** 不声明就没有整层推移：宿主保持原来的硬切 + 中性背景板。 */
+    layer?: LibrarySuiteLayerTransition;
     /** 常驻在集合层之上的转场层；需要从挂载起就在（例如捕获首页卡片的点击）。 */
     Overlay?: LibrarySurfaceComponent<{ enabled: boolean }>;
     /** 压入下一层之前。 */

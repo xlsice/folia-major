@@ -7,6 +7,9 @@ import { buildNeteasePalette, placeholderTint } from './neteaseTheme';
 import { NeteaseEmpty, NeteaseMoreMenu, NeteasePlayButton, NeteaseShell, NeteaseSectionTitle } from './neteaseParts';
 import { useNeteaseScopePlaying } from './useNeteasePlayback';
 
+// entry.ts 不能静态 import 推移模块，由本模块把转场声明转出去。见 NeteaseHome 里的同一句说明。
+export { neteaseTransitions } from './neteaseLayerTransition';
+
 // src/library/suites/netease/NeteaseArtist.tsx
 // 歌手页：网易云的结构是「顶部头像 + 名字 + 关注」+「热门歌曲」+「专辑」两段。
 // 与 collection 一样走订阅式快照（resource.getSnapshot + subscribe）。

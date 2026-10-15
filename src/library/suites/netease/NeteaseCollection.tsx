@@ -17,6 +17,9 @@ import {
     type NeteaseMenuAction,
 } from './neteaseParts';
 
+// entry.ts 不能静态 import 推移模块，由本模块把转场声明转出去。见 NeteaseHome 里的同一句说明。
+export { neteaseTransitions } from './neteaseLayerTransition';
+
 // src/library/suites/netease/NeteaseCollection.tsx
 // netease suite 的歌单 / 专辑详情：手机版网易云的详情结构 ——
 // 顶部返回栏 → 大封面 + 名称 + 播放按钮 → 操作条 → 歌曲列表（序号 / 标题 / ⋯ 常显）。
