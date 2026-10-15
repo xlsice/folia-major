@@ -2312,6 +2312,7 @@ export default function App() {
         handleFmTrash,
         handleNextTrack,
         handlePrevTrack,
+        seekMainAudio,
         togglePlay,
         handlePreviewVolume,
         isNowPlayingControlDisabled,

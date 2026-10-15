@@ -5,6 +5,7 @@ import type { SongResult } from '../../../types';
 import type { LibraryArtistSurfaceProps } from '../../core/contracts/suite';
 import { buildNeteasePalette, placeholderTint } from './neteaseTheme';
 import { NeteaseEmpty, NeteaseMoreMenu, NeteasePlayButton, NeteaseShell, NeteaseSectionTitle } from './neteaseParts';
+import { useNeteaseScopePlaying } from './useNeteasePlayback';
 
 // src/library/suites/netease/NeteaseArtist.tsx
 // 歌手页：网易云的结构是「顶部头像 + 名字 + 关注」+「热门歌曲」+「专辑」两段。
@@ -32,6 +33,9 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
     const topSongs: SongResult[] = snapshot?.topSongs ?? [];
     const albums = snapshot?.albums ?? [];
     const artistName = snapshot?.detail?.name || collection.name;
+
+    // 热门歌曲的「播放全部」：正在放这批时按钮画成播放态、点击改为暂停（同 collection 页的语义）。
+    const topSongsPlaying = useNeteaseScopePlaying(topSongs);
 
     return (
         <NeteaseShell palette={palette} surface="artist">
@@ -76,10 +80,13 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                     <>
                         <div className="flex items-center gap-3 px-4 pb-1">
                             <NeteasePlayButton
-                                isPlaying={false}
-                                label="播放热门歌曲"
+                                isPlaying={topSongsPlaying}
+                                label={topSongsPlaying ? '暂停' : '播放热门歌曲'}
                                 size={38}
-                                onClick={() => playback.playAll(topSongs)}
+                                onClick={() => {
+                                    if (topSongsPlaying && playback.togglePlayback) playback.togglePlayback();
+                                    else playback.playAll(topSongs);
+                                }}
                             />
                             <span className="text-sm font-semibold" style={{ color: 'var(--nt-text)' }}>
                                 热门歌曲

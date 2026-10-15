@@ -11,7 +11,8 @@ import { useAudioSettingsStore } from '../../../stores/useAudioSettingsStore';
 import { useVisualizerSettingsStore } from '../../../stores/useVisualizerSettingsStore';
 import { usePlayerChromeSettingsStore } from '../../../stores/usePlayerChromeSettingsStore';
 import { useOnlineProviderAccountStore } from '../../../stores/useOnlineProviderAccountStore';
-import { selectDisplayCoverUrl, selectDisplayLyrics, usePlaybackStore } from '../../../stores/usePlaybackStore';
+import { selectDisplayCoverUrl, selectDisplayDuration, selectDisplayLyrics, usePlaybackStore } from '../../../stores/usePlaybackStore';
+import { currentTime } from '../../../stores/motionSignals';
 import type { LocalSong, SongResult } from '../../../types';
 import type { LocalLibraryCatalogSnapshot } from '../../../hooks/useLocalLibraryCatalog';
 import type { CollectionNavigationOrigin } from '../../../stores/useCollectionNavigationStore';
@@ -75,6 +76,9 @@ export const usePlayerPanelModel = ({
     const activePlaybackContext = usePlaybackStore(state => state.activePlaybackContext);
     const displayCoverUrl = usePlaybackStore(selectDisplayCoverUrl);
     const displayLyrics = usePlaybackStore(selectDisplayLyrics);
+    // 窄屏封面页签的进度条（手机版二开）。duration 读显示时长：交叉淡入时要跟淡入那首，
+    // 否则进度条会对着上一首的长度画。currentTime 是全局 MotionValue，实例稳定，直接传。
+    const displayDuration = usePlaybackStore(selectDisplayDuration);
 
     // 冗余但保留的订阅：`omni.isSongLiked` 走 getState 读账号 store，读不到变化。今天 App 已经
     // 通过 useOnlineProviderPlatform 订阅了整张 accounts 表，所以这里其实总会被重渲染带到；
@@ -118,6 +122,8 @@ export const usePlayerPanelModel = ({
         replayGainMode,
         isFmMode,
         playerState,
+        currentTime,
+        duration: displayDuration,
         volume,
         isMuted,
         showOpenPanelCloseButton,
@@ -146,6 +152,7 @@ export const usePlayerPanelModel = ({
         replayGainMode,
         isFmMode,
         playerState,
+        displayDuration,
         volume,
         isMuted,
         showOpenPanelCloseButton,

@@ -7,6 +7,7 @@ import type { LibraryHomeSurfaceProps } from '../../core/contracts/suite';
 import type { ProviderCollection } from '../../../types/onlineMusic';
 import { buildNeteasePalette, placeholderTint } from './neteaseTheme';
 import { useSafeInsets, bottomBarPadding } from './useSafeInsets';
+import { useNeteaseIsPlaying, useNeteaseProgress } from './useNeteasePlayback';
 import {
     NeteaseEmpty,
     NeteaseHeader,
@@ -77,6 +78,11 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
     const can = new Set(declaredActions.actions);
     const [tab, setTab] = React.useState<HomeTabId>('discover');
     const [query, setQuery] = React.useState('');
+
+    // 迷你播放条的播放态与进度。之前这里是写死的 isPlaying={false}，按钮永远显示三角；
+    // 点击其实一直是通的（onTogglePlayback 真实生效），坏的只是图标从不反映状态。
+    const miniPlayerPlaying = useNeteaseIsPlaying();
+    const miniPlayerProgress = useNeteaseProgress();
 
     const needle = query.trim().toLowerCase();
     const matchName = (name?: string | null) => !needle || (name ?? '').toLowerCase().includes(needle);
@@ -528,7 +534,8 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                     title={currentTrack.name}
                     subtitle={currentTrack.artists?.map(a => a.name).join(' / ') || ''}
                     coverUrl={currentTrack.album?.coverUrl ?? null}
-                    isPlaying={false}
+                    isPlaying={miniPlayerPlaying}
+                    progress={miniPlayerProgress}
                     seed={String(currentTrack.id)}
                     onOpenPlayer={() => onEnterPlaybackView?.()}
                     onTogglePlayback={() => onTogglePlayback?.()}

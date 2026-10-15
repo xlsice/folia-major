@@ -6,6 +6,7 @@ import { handleSetVisualizerMode } from '../../../stores/useVisualizerSettingsSt
 import { handleSetVolume, handleToggleMute, setAudioQuality } from '../../../stores/useAudioSettingsStore';
 import { openSettings } from '../../../stores/useSettingsModalStore';
 import { handleToggleCoverColorBg } from '../../../stores/useThemeSettingsStore';
+import type { MotionValue } from 'framer-motion';
 
 // src/components/app/player-panel/buildPlayerPanelModel.ts
 
@@ -32,6 +33,12 @@ type PlayerPanelAmbient = {
     onlineLyricsState: UnifiedPanelProps['playback']['onlineLyricsState'];
     lyricTimelineOffsetMs: number;
     replayGainMode: UnifiedPanelProps['playback']['replayGainMode'];
+    /**
+     * 窄屏封面页签进度条的位置与总长（手机版二开）。currentTime 是全局 MotionValue，实例稳定；
+     * duration 读显示时长，交叉淡入时跟淡入的那首。
+     */
+    currentTime: MotionValue<number>;
+    duration: number;
     isFmMode: boolean;
     playerState: UnifiedPanelProps['playback']['playerState'];
     volume: UnifiedPanelProps['playback']['volume'];
@@ -86,6 +93,8 @@ export type PlayerPanelDeps = {
     handleFmTrash: UnifiedPanelProps['playback']['onFmTrash'];
     handleNextTrack: UnifiedPanelProps['playback']['onNextTrack'];
     handlePrevTrack: UnifiedPanelProps['playback']['onPrevTrack'];
+    /** 窄屏封面页签进度条的 seek（手机版二开）。 */
+    seekMainAudio: (time: number) => void;
     togglePlay: UnifiedPanelProps['playback']['onTogglePlay'];
     handlePreviewVolume: UnifiedPanelProps['playback']['onVolumePreview'];
     isNowPlayingControlDisabled: boolean;
@@ -159,6 +168,9 @@ export const buildPlayerPanelModel = ({
     handleFmTrash,
     handleNextTrack,
     handlePrevTrack,
+    currentTime,
+    duration,
+    seekMainAudio,
     playerState,
     togglePlay,
     volume,
@@ -246,6 +258,11 @@ export const buildPlayerPanelModel = ({
             onFmTrash: handleFmTrash,
             onNextTrack: handleNextTrack,
             onPrevTrack: handlePrevTrack,
+            // 窄屏封面页签的进度条要能拖动，所以把位置与 seek 一起交给面板（手机版二开）。
+            // currentTime 是全局 MotionValue，直接给实例；duration 读 store 的显示时长（交叉淡入时是淡入那首的）。
+            currentTime,
+            duration,
+            onSeek: seekMainAudio,
             playerState,
             onTogglePlay: togglePlay,
             volume,

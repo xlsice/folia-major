@@ -236,7 +236,13 @@ export const NeteaseMiniPlayer: React.FC<{
     onOpenPlayer: () => void;
     onTogglePlayback: () => void;
     onOpenQueue: () => void;
-}> = ({ title, subtitle, coverUrl, isPlaying, seed, onOpenPlayer, onTogglePlayback, onOpenQueue }) => (
+    /**
+     * 播放进度 0..1。缺省 0（不画进度条）。调用方用 useNeteaseProgress 取真实值。
+     * 传数字而不是在组件里订阅，是为了让 suite 的其它 surface 也能复用同一个 hook，
+     * 也让这个纯展示组件保持无 store 依赖（可以直接渲染、单测）。
+     */
+    progress?: number;
+}> = ({ title, subtitle, coverUrl, isPlaying, seed, onOpenPlayer, onTogglePlayback, onOpenQueue, progress = 0 }) => (
     <div className="shrink-0 px-3 pb-2">
         <div
             role="button"
@@ -248,7 +254,8 @@ export const NeteaseMiniPlayer: React.FC<{
                     onOpenPlayer();
                 }
             }}
-            className="flex items-center gap-2.5 rounded-lg px-2 py-1.5"
+            // relative + overflow-hidden：进度条绝对贴在胶囊底边（网易云迷你条同款），靠这一层裁掉。
+            className="relative flex items-center gap-2.5 overflow-hidden rounded-lg px-2 py-1.5"
             style={{
                 background: 'var(--nt-elevated)',
                 border: '1px solid var(--nt-divider)',
@@ -301,6 +308,18 @@ export const NeteaseMiniPlayer: React.FC<{
             >
                 <ListMusic size={18} style={{ color: 'var(--nt-text)' }} />
             </button>
+
+            {/* 进度条：胶囊底边一条 2dp 细线，只在真正在播且时长已知时画（网易云迷你条同款）。
+                transform: scaleX 由档位提交驱动，不写 width —— 后者每帧都会触发重排。 */}
+            {isPlaying && progress > 0 && (
+                <span
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] origin-left"
+                    style={{
+                        background: 'var(--nt-accent)',
+                        transform: `scaleX(${progress})`,
+                    }}
+                />
+            )}
         </div>
     </div>
 );

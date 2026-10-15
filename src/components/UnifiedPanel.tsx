@@ -1,6 +1,7 @@
 import React from 'react';
 import { PANEL_SLIDE_CLAMP_PX, PANEL_SLIDE_TRACK_BASE_PX, PANEL_SLIDE_TRACK_FULL_PX, PANEL_SLIDE_TRIGGER_PX } from '../utils/panelSlideGesture';
 import { motion, AnimatePresence, useTransform } from 'framer-motion';
+import type { MotionValue } from 'framer-motion';
 import { Settings, Settings2, X, Disc, SlidersHorizontal, ListMusic, User as UserIcon, Home as HomeIcon, FileAudio, FileText, Radio, Cloud, Star, Command, ChevronLeft, MirrorRectangular, Puzzle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Album, Artist, SongResult, Theme, PlayerState, ReplayGainMode, ThemeMode, VisualizerMode } from '../types';
@@ -18,6 +19,7 @@ import type { OnlineLyricsState } from '../types';
 import type { AudioQualityPreference } from '../types/onlineMusic';
 import type { ThemeSourceModel } from '../hooks/themeControllerState';
 import { getPlaybackSourceRef } from '../utils/appPlaybackGuards';
+import { usePlaybackStore, selectDisplayPlayerState } from '../stores/usePlaybackStore';
 import { canSaveQueueAsLocalPlaylist } from '../utils/queueReorder';
 import { canDislikeCurrentSong, resolveLikeAvailability } from '../utils/playerLikeAvailability';
 import { usePlayerBottomBarBottomPx } from '../hooks/usePlayerBottomBarBottomPx';
@@ -81,6 +83,13 @@ type UnifiedPanelPlaybackProps = {
     onFmTrash: () => void;
     onNextTrack: () => void;
     onPrevTrack: () => void;
+    /**
+     * 封面页签的进度条要能拖动，所以这里要把播放位置与 seek 一起交给它。
+     * 全部可选：这个面板在桌面端也用，桌面端有播放胶囊，不画这排控制（见 CoverTab 的 compact 判定）。
+     */
+    currentTime?: MotionValue<number>;
+    duration?: number;
+    onSeek?: (time: number) => void;
     playerState: PlayerState;
     onTogglePlay: () => void;
     volume: number;
@@ -197,6 +206,9 @@ const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
         onFmTrash,
         onNextTrack,
         onPrevTrack,
+        currentTime,
+        duration = 0,
+        onSeek,
         playerState,
         onTogglePlay,
         volume,
@@ -266,6 +278,9 @@ const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
     const canAddCurrentSongToPlaylist = addToPlaylist.canAdd;
     const addToPlaylistDisabledReason = addToPlaylist.disabledReason;
     const supportsHover = typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    // 封面页签那排窄屏播放控制要按播放状态重画图标（Play / Pause）。定向订阅整颗 store 的一个派生值，
+    // 不订阅 playerState 本体：淡入窗口里 selectDisplayPlayerState 才是对的，而它已经吸收了那段差异。
+    const coverPlaying = usePlaybackStore(state => selectDisplayPlayerState(state) === PlayerState.PLAYING);
 
     const foliumTabs = useFoliumPanelTabs();
     const tabs: { id: PanelTab; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
@@ -807,6 +822,18 @@ const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
                                                 onToggle();
                                             }}
                                             onCopySongInfoSuccess={onCopySongInfoSuccess}
+                                            // 窄屏才画的播放控制（手机端面板里没有播放胶囊，桌面端有）。
+                                            compact={!supportsHover}
+                                            isPlaying={coverPlaying}
+                                            onTogglePlay={onTogglePlay}
+                                            onPrevTrack={onPrevTrack}
+                                            onNextTrack={onNextTrack}
+                                            canGoPrev={playQueue.length > 1}
+                                            canGoNext={playQueue.length > 1}
+                                            controlsDisabled={playbackControlsDisabled}
+                                            currentTime={currentTime}
+                                            duration={duration}
+                                            onSeek={onSeek}
                                         />
                                     )}
                                     {currentTab === 'controls' && (

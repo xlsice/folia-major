@@ -4,6 +4,8 @@ import { useSyncExternalStore } from 'react';
 import type { SongResult } from '../../../types';
 import type { LibraryCollectionSurfaceProps } from '../../core/contracts/suite';
 import { buildNeteasePalette, placeholderTint } from './neteaseTheme';
+import { useNeteaseCurrentKey, useNeteaseIsPlaying, useNeteaseScopePlaying } from './useNeteasePlayback';
+import { getPlaybackSongKey } from '../../../utils/appPlaybackGuards';
 import {
     NeteaseCollapsible,
     NeteaseEmpty,
@@ -60,6 +62,15 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
 
     const tracks: SongResult[] = snapshot?.tracks ?? [];
     const detail = snapshot?.detail ?? null;
+
+    // 播放态提到组件顶层订阅：renderRow 是普通函数不是组件，不能在里面调 hook。
+    // 序号与「播放全部」按钮都要用；之前两处都是写死的 false。
+    const scopePlaying = useNeteaseScopePlaying(tracks);
+    const playingKey = useNeteaseCurrentKey();
+    const isPlayingNow = useNeteaseIsPlaying();
+    const rowPlaying = (track: SongResult) => (
+        isPlayingNow && playingKey !== null && getPlaybackSongKey(track) === playingKey
+    );
     const title = detail?.name || collection.name;
 
     const headerActions = React.useMemo(() => {
@@ -124,7 +135,7 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
                 className="flex items-center gap-2 px-3 py-2"
                 style={{ borderTop: index === 0 ? 'none' : '1px solid var(--nt-divider)' }}
             >
-                <NeteaseTrackIndex index={index + 1} isPlaying={false} />
+                <NeteaseTrackIndex index={index + 1} isPlaying={rowPlaying(track)} />
                 <button
                     type="button"
                     disabled={!isInteractive}
@@ -199,9 +210,14 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
                 {/* 操作条 */}
                 <div className="flex items-center gap-3 px-4 pb-3">
                     <NeteasePlayButton
-                        isPlaying={false}
-                        label="播放全部"
-                        onClick={() => playback.playAll(tracks)}
+                        isPlaying={scopePlaying}
+                        label={scopePlaying ? '暂停' : '播放全部'}
+                        // 正在放这一批时按钮已经画成播放态，点击就必须是暂停；否则会出现
+                        //「图标说在播、点击却从头播放」的新 bug。宿主没给开关时退回播放全部。
+                        onClick={() => {
+                            if (scopePlaying && playback.togglePlayback) playback.togglePlayback();
+                            else playback.playAll(tracks);
+                        }}
                     />
                     {can.has('play-scope') && tracks.length > 0 && (
                         <button

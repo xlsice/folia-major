@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { Album, Artist, SongResult, UnifiedSong } from '../../types';
 import { canResolveSongCatalogRef } from '../../services/onlineMusic/catalogRefs';
 import { getProviderSongMetadata, getProviderSongPageUrl } from '../../services/onlineMusic/songMetadata';
+import CompactTransport from './CoverTabTransport';
+import type { MotionValue } from 'framer-motion';
 
 interface CoverTabProps {
     currentSong: SongResult | null;
@@ -14,6 +16,21 @@ interface CoverTabProps {
     onOpenCurrentNavidromeAlbum: () => void;
     onOpenCurrentNavidromeArtist: () => void;
     onCopySongInfoSuccess: () => void;
+    /**
+     * 窄屏（手机）。面板在手机上不挂播放胶囊，所以歌名下面补一排「上一首 / 播放暂停 / 下一首 + 进度条」。
+     * 桌面端为 false，保持原样——它有自己的播放胶囊，再加一份就是重复。
+     */
+    compact?: boolean;
+    isPlaying?: boolean;
+    onTogglePlay?: () => void;
+    onPrevTrack?: () => void;
+    onNextTrack?: () => void;
+    canGoPrev?: boolean;
+    canGoNext?: boolean;
+    controlsDisabled?: boolean;
+    currentTime?: MotionValue<number>;
+    duration?: number;
+    onSeek?: (time: number) => void;
 }
 
 const CoverTab: React.FC<CoverTabProps> = ({
@@ -25,6 +42,17 @@ const CoverTab: React.FC<CoverTabProps> = ({
     onOpenCurrentNavidromeAlbum,
     onOpenCurrentNavidromeArtist,
     onCopySongInfoSuccess,
+    compact = false,
+    isPlaying = false,
+    onTogglePlay,
+    onPrevTrack,
+    onNextTrack,
+    canGoPrev = false,
+    canGoNext = false,
+    controlsDisabled = false,
+    currentTime,
+    duration = 0,
+    onSeek,
 }) => {
     const { t } = useTranslation();
     const isLocalSong = Boolean(currentSong && (((currentSong as any).isLocal === true) || (currentSong as any).localRef?.songId));
@@ -177,6 +205,21 @@ const CoverTab: React.FC<CoverTabProps> = ({
                     </div>
                 </div>
             </div>
+            {/* 窄屏播放控制：手机上面板里没有播放胶囊，歌名/专辑下面补一排（手机版二开）。 */}
+            {compact && currentSong && (
+                <CompactTransport
+                    isPlaying={isPlaying}
+                    onTogglePlay={onTogglePlay ?? (() => {})}
+                    onPrevTrack={onPrevTrack ?? (() => {})}
+                    onNextTrack={onNextTrack ?? (() => {})}
+                    canGoPrev={canGoPrev}
+                    canGoNext={canGoNext}
+                    controlsDisabled={controlsDisabled}
+                    currentTime={currentTime}
+                    duration={duration}
+                    onSeek={onSeek}
+                />
+            )}
         </motion.div>
     );
 };
