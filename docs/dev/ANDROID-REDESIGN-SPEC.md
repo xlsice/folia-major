@@ -246,9 +246,15 @@ f(x) = x/0.05 + 1.05/x 在 x = 0.2291 处取最小 9.17，两项各 4.58。
 | `--nt-radius-lg` | 16px | mini player、浮层、下拉菜单 |
 | `--nt-radius-full` | 9999px | 圆形按钮、搜索框胶囊 |
 
-收掉现在的 `6px`（只用了 1 处）与散落的 `rounded-full`。
+> 实现口径：这三个值**正好就是 Tailwind 默认的 `rounded-lg` / `rounded-xl` / `rounded-2xl`**，
+> 所以 `className` 里直接吸附到这三个类 + `rounded-full`，不必换成
+> `rounded-[var(--nt-radius-md)]` 这类任意值写法——那会让 40 多处 className 变得难读，
+> 还多一层 JIT 风险。token 仍然定义，用来把刻度写死在注释与审计口径上。
+>
+> 改造前实测散落 **5 个离散档**（`rounded-md` 6px / `lg` 8 / `xl` 12 / `2xl` 16 / full），
+> 其中 `rounded-md`(6px) 已全部收掉，现在只剩 8 / 12 / 16 / full 四档。
 
-### 4.2 层级三级（现在全站 0 处 `box-shadow`）
+### 4.2 层级三级
 
 | 级别 | 用途 | 表达 |
 | --- | --- | --- |
@@ -256,22 +262,42 @@ f(x) = x/0.05 + 1.05/x 在 x = 0.2291 处取最小 9.17，两项各 4.58。
 | **L1** | 列表项、输入框 | 1px `--nt-divider` 边框 + `--nt-radius-md` |
 | **L2** | mini player、浮层、下拉菜单 | 1px 边框 + `--nt-radius-lg` + 投影 |
 
-投影（浅色主题，底 `#f3f5f5`）：
+投影 token `--nt-shadow-2`，浅色与深色**两套分开给，不共用**：
 
 ```css
---nt-shadow-2: 0 2px 8px rgba(16, 32, 30, 0.10),
-               0 1px 2px rgba(16, 32, 30, 0.06);
+/* 浅色 */
+--nt-shadow-2: 0 2px 8px rgba(16, 32, 30, 0.10), 0 1px 2px rgba(16, 32, 30, 0.06);
+/* 深色：同样的黑低透明在深底上等于没有，改用更小的偏移 + 更高的不透明度 */
+--nt-shadow-2: 0 2px 10px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.30);
 ```
 
-暗色主题改用黑色低透明 + 更小偏移，两套分开给，不共用。
+> ⚠️ 初稿这里写的是「现在全站 0 处 `box-shadow`」，**实测不准确**：
+> `NeteaseMoreMenu` 的下拉本来就带 Tailwind 的 `shadow-lg`（只是不受控、且圆角比迷你条还小）。
+> 改造后全 suite 的 `shadow-*` 类清零，投影只从 `--nt-shadow-2` 出。
 
 ### 4.3 底部区（只统一视觉，不改结构 — 已拍板）
 
 保持 tab 栏与 mini player **两个独立区域、现有触控逻辑不变**，只统一三件事：
 
-1. 共享一条 `--nt-divider` 分隔线（现在两者之间是一段空隙，没有分界）；
+1. 共享一条 `--nt-divider`（tab 栏顶部边框与迷你条描边取同一个值，第四步已把
+   `--nt-divider` 重新校准到亮度差 ≥ 0.10，两者自然一致）；
 2. 圆角统一到 `--nt-radius-lg`，mini player 不再自带投影（避免与 tab 栏打架）；
 3. 高度不动（tab 54px + 手势区 19.4px / mini ≈107px）。
+
+> 初稿写「现在两者之间是一段空隙，没有分界」也不准确——tab 栏本来就有 `border-t`。
+> 真正的问题是：迷你条用 `rounded-lg`(8px)、下拉用 `rounded-xl`(12px)、登录卡用 `rounded-2xl`(16px)，
+> 三个浮层的圆角彼此不统一。
+
+### 4.4 这套 suite 是桌面端共用的（重要前提）
+
+`netease` 是注册在 `LibrarySuiteManifest` 里的四套 suite 之一，**桌面端同样能选中**，
+所以 §2 / §3 / §4 / §5 的改动都会同时落到桌面观感上。**只有 `--nt-font` 是安卓门**
+（`VITE_ANDROID_BUILD` + `Capacitor.isNativePlatform()` 两道闸）。
+
+这是第二～五步一致沿用的口径：圆角这类**结构属性**如果只给安卓改，桌面会变成
+「新圆角 + 旧字阶 + 旧配色」的混合态，比统一改动更糟。若要桌面完全不变，
+需要整套 fork 出两个 suite，那是另一个量级的工程，不在本次范围内。
+
 
 ---
 

@@ -163,15 +163,16 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
 
     return (
         <NeteaseShell palette={palette} surface="collection">
-            {/* 返回栏 */}
-            <div className="flex min-h-[48px] shrink-0 items-center gap-1 px-2">
+            {/* 返回栏。同 Artist：这条也是自带头部，边距要跟上全站的 16px。 */}
+            <div className="flex min-h-[56px] shrink-0 items-center gap-1 px-4">
                 <button
                     type="button"
                     onClick={onBack}
                     aria-label="返回"
-                    className="rounded-full p-2"
+                    className="flex shrink-0 items-center justify-center rounded-full"
+                    style={{ width: 'var(--nt-touch-min)', height: 'var(--nt-touch-min)' }}
                 >
-                    <ChevronLeft size={20} style={{ color: 'var(--nt-text)' }} />
+                    <ChevronLeft size={22} style={{ color: 'var(--nt-text)' }} />
                 </button>
                 <span className="min-w-0 flex-1 truncate px-1 nt-t-item" style={{ color: 'var(--nt-text)' }}>
                     {title}
@@ -259,12 +260,14 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
                 )}
                 {snapshot?.status === 'error' && (
                     <NeteaseEmpty
+                        fill
                         message={snapshot.error?.kind === 'not-public' ? '该歌单不可公开访问' : '加载失败'}
                         hint="下拉重试"
                     />
                 )}
                 {snapshot?.status === 'ready' && tracks.length === 0 && (
                     <NeteaseEmpty
+                        fill
                         message="这里还没有歌曲"
                         hint="在线音源没响应，或这个歌单确实没有可播放的曲目"
                     />

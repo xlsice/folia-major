@@ -39,9 +39,13 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
 
     return (
         <NeteaseShell palette={palette} surface="artist">
-            <div className="flex min-h-[48px] shrink-0 items-center gap-1 px-2">
-                <button type="button" onClick={onBack} aria-label="返回" className="rounded-full p-2">
-                    <ChevronLeft size={20} style={{ color: 'var(--nt-text)' }} />
+            {/* 这条头部没有复用 NeteaseHeader，自己写了一份，所以边距也要自己跟上：
+                原来是 px-2（8px），比全站统一的 16px 少一半。 */}
+            <div className="flex min-h-[56px] shrink-0 items-center gap-1 px-4">
+                <button type="button" onClick={onBack} aria-label="返回"
+                    className="flex shrink-0 items-center justify-center rounded-full"
+                    style={{ width: 'var(--nt-touch-min)', height: 'var(--nt-touch-min)' }}>
+                    <ChevronLeft size={22} style={{ color: 'var(--nt-text)' }} />
                 </button>
                 <span className="min-w-0 flex-1 truncate px-1 nt-t-item" style={{ color: 'var(--nt-text)' }}>
                     {artistName}
@@ -192,7 +196,7 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                 )}
 
                 {snapshot?.status === 'ready' && topSongs.length === 0 && albums.length === 0 && (
-                    <NeteaseEmpty message="没有这位歌手的内容" />
+                    <NeteaseEmpty fill message="没有这位歌手的内容" />
                 )}
             </div>
         </NeteaseShell>

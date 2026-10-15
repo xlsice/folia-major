@@ -89,15 +89,20 @@ export const NeteaseSearchBar: React.FC<{
 }> = ({ query, placeholder, onQueryChange }) => (
     <div className="px-4 pb-2 shrink-0">
         <div
-            className="flex items-center gap-2 rounded-full px-3 py-2"
-            style={{ background: 'var(--nt-field)' }}
+            className="flex items-center gap-2 rounded-full px-3"
+            // 高固定 44。**刻意不给纵向内边距**：给了就会叠在高度上——
+            // 清除键的 44 触控区 + py-2 的 16 = 整条框被撑到 60px。
+            // 改由 min-height 兜底，清除键出现与否高度都不变（实测 48 → 60 的教训）。
+            style={{ background: 'var(--nt-field)', minHeight: 'var(--nt-touch-min)' }}
         >
-            <Search size={15} className="shrink-0" style={{ color: 'var(--nt-text-faint)' }} />
+            <Search size={18} className="shrink-0" style={{ color: 'var(--nt-text-muted)' }} />
             <input
                 value={query}
                 onChange={event => onQueryChange(event.target.value)}
                 placeholder={placeholder}
-                className="min-w-0 flex-1 bg-transparent outline-none nt-t-item"
+                // nt-input 提供 ::placeholder 的色。占位符色是**伪元素**，
+                // inline style 表达不了，原来它就一直吃浏览器默认值，实测对比度不合格。
+                className="nt-input min-w-0 flex-1 bg-transparent outline-none nt-t-item"
                 style={{ color: 'var(--nt-text)' }}
             />
             {query.length > 0 && (
@@ -105,10 +110,24 @@ export const NeteaseSearchBar: React.FC<{
                     type="button"
                     onClick={() => onQueryChange('')}
                     aria-label="clear"
-                    className="shrink-0 rounded-full p-0.5"
-                    style={{ background: 'var(--nt-text-faint)' }}
+                    // 触控区 44，但**视觉圆点只有 32**。两层分开：按钮本身透明且撑满 44，
+                    // 里面再放一颗 32 的实心圆。
+                    // 之前图省事把整颗做成 32，触控区就跟着缩到 32 —— 低于 Android 无障碍下限。
+                    // 也别图省事直接做成 44 的实心圆：那会让搜索框从 44 撑到 60 高。
+                    className="flex shrink-0 items-center justify-center rounded-full"
+                    style={{ width: 'var(--nt-touch-min)', height: 'var(--nt-touch-min)' }}
                 >
-                    <X size={11} style={{ color: 'var(--nt-bg)' }} />
+                    <span
+                        className="flex items-center justify-center rounded-full"
+                        style={{
+                            width: 32,
+                            height: 32,
+                            background: 'var(--nt-text-faint)',
+                            color: 'var(--nt-bg)',
+                        }}
+                    >
+                        <X size={14} />
+                    </span>
                 </button>
             )}
         </div>
@@ -163,15 +182,27 @@ export const NeteaseMoreMenu: React.FC<{
                     event.stopPropagation();
                     setOpen(value => !value);
                 }}
-                className="rounded-full p-2 transition-colors"
-                style={{ background: open ? 'var(--nt-hover)' : 'transparent' }}
+                className="flex items-center justify-center rounded-full transition-colors"
+                // 触控区 ≥44：原来 p-2 + 17px 图标 = 33px，低于无障碍下限。
+                style={{
+                    width: 'var(--nt-touch-min)',
+                    height: 'var(--nt-touch-min)',
+                    background: open ? 'var(--nt-hover)' : 'transparent',
+                }}
             >
-                <MoreHorizontal size={17} style={{ color: 'var(--nt-text-muted)' }} />
+                <MoreHorizontal size={18} style={{ color: 'var(--nt-text-muted)' }} />
             </button>
             {open && (
                 <div
-                    className="absolute right-0 top-full z-30 mt-1 min-w-[9.5rem] overflow-hidden rounded-xl py-1 shadow-lg"
-                    style={{ background: 'var(--nt-elevated)', border: '1px solid var(--nt-divider)' }}
+                    // L2 浮层：radius-lg(16) + 1px 边框 + 投影。改造前是 rounded-xl(12) + shadow-lg，
+                    // 圆角比迷你条还小、投影不受控。
+                    className="absolute right-0 top-full z-30 mt-1 min-w-[9.5rem] overflow-hidden py-1"
+                    style={{
+                        background: 'var(--nt-elevated)',
+                        border: '1px solid var(--nt-divider)',
+                        borderRadius: 'var(--nt-radius-lg)',
+                        boxShadow: 'var(--nt-shadow-2)',
+                    }}
                 >
                     {actions.map(action => (
                         <button
@@ -182,10 +213,9 @@ export const NeteaseMoreMenu: React.FC<{
                                 setOpen(false);
                                 action.onSelect();
                             }}
-                            className="block w-full px-3 py-3 text-left nt-t-label transition-colors"
-                            style={{
-                                color: action.tone === 'danger' ? 'var(--nt-danger)' : 'var(--nt-text)',
-                            }}
+                            // 高 ≥44：原来 px-3 py-3 = 16+24 = 40px，差 4px。
+                            className="flex w-full items-center px-3 text-left nt-t-label transition-colors"
+                            style={{ minHeight: 'var(--nt-touch-min)', color: action.tone === 'danger' ? 'var(--nt-danger)' : 'var(--nt-text)' }}
                         >
                             {action.label}
                         </button>
@@ -203,7 +233,7 @@ export const NeteaseTrackIndex: React.FC<{
 }> = ({ index, isPlaying }) => (
     <span
         className="w-6 shrink-0 text-center nt-t-meta"
-        style={{ color: isPlaying ? 'var(--nt-accent-text)' : 'var(--nt-text-faint)' }}
+        style={{ color: isPlaying ? 'var(--nt-accent-text)' : 'var(--nt-text-muted)' }}
     >
         {isPlaying ? (
             <span className="inline-flex items-end gap-[2px]" aria-label="now playing">
@@ -258,16 +288,20 @@ export const NeteaseMiniPlayer: React.FC<{
                 }
             }}
             // relative + overflow-hidden：进度条绝对贴在胶囊底边（网易云迷你条同款），靠这一层裁掉。
-            className="relative flex items-center gap-2 overflow-hidden rounded-lg px-2 py-2"
+            className="relative flex items-center gap-2 overflow-hidden px-2 py-2"
             style={{
                 background: 'var(--nt-elevated)',
                 border: '1px solid var(--nt-divider)',
+                // 圆角统一到 radius-lg(16)（规格 §4.3：底部区只统一视觉，不改结构）。
+                // 投影**刻意不加**：迷你条与 tab 栏同层，两者都加投影会打架。
+                borderRadius: 'var(--nt-radius-lg)',
             }}
         >
-            {/* 封面 40dp：网易云迷你条的封面是 40dp 圆角小方块 */}
+            {/* 封面 44px：网易云迷你条的封面是 40dp 圆角小方块。
+                顺带把 40→44，理由同外层容器——它是这颗圆角里唯一被点到的部位。 */}
             <div
-                className="h-10 w-10 shrink-0 overflow-hidden rounded-md"
-                style={placeholderTint(seed, false)}
+                className="h-11 w-11 shrink-0 overflow-hidden"
+                style={{ ...placeholderTint(seed, false), borderRadius: 'var(--nt-radius-sm)' }}
             >
                 {coverUrl ? (
                     <img src={coverUrl} alt="" className="h-full w-full object-cover" />
@@ -294,7 +328,9 @@ export const NeteaseMiniPlayer: React.FC<{
                     event.stopPropagation();
                     onTogglePlayback();
                 }}
-                className="shrink-0 rounded-full p-2"
+                className="flex shrink-0 items-center justify-center rounded-full"
+                // 触控区 ≥44：原来 p-2 + 19px 图标 = 35px。
+                style={{ width: 'var(--nt-touch-min)', height: 'var(--nt-touch-min)' }}
             >
                 {isPlaying
                     ? <Pause size={19} fill="var(--nt-text)" style={{ color: 'var(--nt-text)' }} />
@@ -307,7 +343,8 @@ export const NeteaseMiniPlayer: React.FC<{
                     event.stopPropagation();
                     onOpenQueue();
                 }}
-                className="shrink-0 rounded-full p-2"
+                className="flex shrink-0 items-center justify-center rounded-full"
+                style={{ width: 'var(--nt-touch-min)', height: 'var(--nt-touch-min)' }}
             >
                 <ListMusic size={18} style={{ color: 'var(--nt-text)' }} />
             </button>
@@ -333,7 +370,7 @@ export const NeteasePlayButton: React.FC<{
     label: string;
     onClick: () => void;
     size?: number;
-}> = ({ isPlaying, label, onClick, size = 44 }) => (
+}> = ({ isPlaying, label, onClick, size = 56 }) => (
     <button
         type="button"
         aria-label={label}
@@ -362,14 +399,25 @@ export const NeteaseSectionTitle: React.FC<{ children: React.ReactNode; count?: 
     <div className="flex items-baseline gap-2 px-4 pb-2 pt-6">
         <span className="nt-t-title" style={{ color: 'var(--nt-text)' }}>{children}</span>
         {typeof count === 'number' && (
-            <span className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>{count}</span>
+            <span className="nt-t-meta" style={{ color: 'var(--nt-text-muted)' }}>{count}</span>
         )}
     </div>
 );
 
-/** 空状态占位。列表为空时给一句说明，不留白屏。 */
-export const NeteaseEmpty: React.FC<{ message: string; hint?: string }> = ({ message, hint }) => (
-    <div className="flex flex-col items-center justify-center gap-1 px-8 py-16 text-center">
+/**
+ * 空状态占位。列表为空时给一句说明，不留白屏。
+ *
+ * `fill` 区分两种用法，这个区分是必需的：
+ * - **整屏空态**（未登录、歌单空、艺人无内容）—— 内容区整块都是空的，
+ *   文案该**真居中**。改造前它只在 1/4 高度处，底下留一大片无意义留白。
+ * - **区块内嵌空态**（某个推荐位加载中、某组没有专辑）—— 这时父容器里
+ *   还有别的区块，居中反而会把它顶到奇怪的位置，保持原来的顶部排布。
+ * 一刀切改成居中会把后者做坏，所以用 props 分开。
+ */
+export const NeteaseEmpty: React.FC<{ message: string; hint?: string; fill?: boolean }> = ({ message, hint, fill = false }) => (
+    <div
+        className={`flex flex-col items-center justify-center gap-1 px-8 text-center ${fill ? 'min-h-full py-16' : 'py-16'}`}
+    >
         <p className="nt-t-title" style={{ color: 'var(--nt-text-muted)' }}>{message}</p>
         {hint && <p className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>{hint}</p>}
     </div>
@@ -387,9 +435,9 @@ export const NeteaseCollapsible: React.FC<{ label: string; children: React.React
             >
                 <span className="nt-t-item" style={{ color: 'var(--nt-text-muted)' }}>{label}</span>
                 <ChevronDown
-                    size={15}
+                    size={16}
                     style={{
-                        color: 'var(--nt-text-faint)',
+                        color: 'var(--nt-text-muted)',
                         transform: open ? 'rotate(180deg)' : 'none',
                         transition: 'transform 180ms ease',
                     }}
@@ -431,6 +479,10 @@ export const NETEASE_STYLES = `
 .nt-t-meta    { font-size:13px; font-weight:400; line-height:18px; font-variant-numeric:tabular-nums; }
 .nt-t-label   { font-size:12px; font-weight:500; line-height:16px; letter-spacing:.2px; }
 .nt-t-caption { font-size:11px; font-weight:400; line-height:15px; font-variant-numeric:tabular-nums; }
+
+/* 占位符色是伪元素，inline style 表达不了，必须走这条规则。
+   改造前搜索框占位符一直吃浏览器默认值，实测对 --nt-field 的对比度不合格。 */
+.nt-input::placeholder { color: var(--nt-text-faint); opacity: 1; }
 
 @keyframes nt-eq { from { transform: scaleY(0.45); } to { transform: scaleY(1); } }
 .nt-scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; }

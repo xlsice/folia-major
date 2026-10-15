@@ -66,8 +66,14 @@ const NeteaseAccount: React.FC<LibraryAccountSurfaceProps> = ({
                 style={{ background: 'var(--nt-scrim)' }}
             >
                 <div
-                    className="w-full max-w-[19rem] overflow-hidden rounded-2xl"
-                    style={{ background: 'var(--nt-elevated)', border: '1px solid var(--nt-divider)' }}
+                    className="w-full max-w-[19rem] overflow-hidden"
+                    // L2 浮层：radius-lg + 1px 边框 + 投影。原来只有 2xl 圆角、无投影。
+                    style={{
+                        background: 'var(--nt-elevated)',
+                        border: '1px solid var(--nt-divider)',
+                        borderRadius: 'var(--nt-radius-lg)',
+                        boxShadow: 'var(--nt-shadow-2)',
+                    }}
                 >
                     {login ? (
                         <LoginCard

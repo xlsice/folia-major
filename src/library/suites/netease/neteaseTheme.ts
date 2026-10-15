@@ -244,6 +244,8 @@ export type NeteasePalette = {
     accentText: string;
     /** 危险色（删除一类操作）。**约束**：对所在面 ≥ 4.5:1 */
     danger: string;
+    /** L2 层浮层投影。**浅/深两套分开给，不共用**——同一个投影在深底上等于没有。 */
+    shadow2: string;
     /** 按下/悬停的浅层底色 */
     hover: string;
     /** 搜索框、输入框底。**约束**：与 surface 差 ≥ 0.03 */
@@ -331,6 +333,12 @@ export const buildNeteasePalette = (theme: Theme, isDaylight: boolean): NeteaseP
     const dangerBase: RGB = isDaylight ? [197, 48, 54] : [255, 138, 143];
     const danger = toHex(ensureContrast(dangerBase, refBg, 4.5));
 
+    // L2 层浮层投影。两套分开给是刻意的：深底上再叠一层黑低透明几乎看不见，
+    // 所以深色主题用更小的偏移 + 更高的黑不透明度，靠**边缘更紧**而不是靠更浓来表达。
+    const shadow2 = isDaylight
+        ? '0 2px 8px rgba(16, 32, 30, 0.10), 0 1px 2px rgba(16, 32, 30, 0.06)'
+        : '0 2px 10px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.30)';
+
     return {
         bg: background,
         surface,
@@ -343,6 +351,7 @@ export const buildNeteasePalette = (theme: Theme, isDaylight: boolean): NeteaseP
         onAccent: buildOnAccent(accentRgb, isDaylight),
         accentText,
         danger,
+        shadow2,
         hover,
         field,
         scrim: overlayTint(background, isDaylight),
@@ -398,6 +407,17 @@ export const paletteToCssVars = (palette: NeteasePalette): React.CSSProperties =
         '--nt-space-4': '16px',      // **屏幕左右边距**、列表项内边距
         '--nt-space-6': '24px',      // 区块之间、弹窗内边距
         '--nt-space-8': '32px',      // 页面顶部大留白
+        // 圆角四档（规格 §4.1）。Tailwind 默认的 rounded-lg / rounded-xl / rounded-2xl
+        // 正好就是 8 / 12 / 16，所以 **className 里的圆角吸附到这三个类 + rounded-full**。
+        // 改造前实测散落 5 个离散档（6 / 8 / 12 / 16 / full），其中 rounded-md(6px) 已全部收掉。
+        '--nt-radius-sm': '8px',     // 小元素、chip、缩略图      → rounded-lg
+        '--nt-radius-md': '12px',    // 卡片、列表项容器          → rounded-xl
+        '--nt-radius-lg': '16px',    // mini player、浮层、下拉菜单 → rounded-2xl
+        '--nt-radius-full': '9999px', // 圆形按钮、搜索框胶囊      → rounded-full
+        // 触控区下限（Android 无障碍硬指标 44×44 CSS px）。
+        // 不用 Tailwind 类是因为 44 不在间距刻度里，且必须写成可被审计读到的值。
+        '--nt-touch-min': '44px',
+        '--nt-shadow-2': palette.shadow2,
         '--nt-bg': palette.bg,
         '--nt-surface': palette.surface,
         '--nt-elevated': palette.elevated,

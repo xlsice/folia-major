@@ -367,11 +367,12 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                 <NeteaseEmpty
                     message="未登录"
                     hint="登录网易云后这里会显示你的歌单"
+                    fill
                 />
             );
         }
         if (onlineCollections.length === 0) {
-            return <NeteaseEmpty message={needle ? '没有匹配的歌单' : '还没有歌单'} hint="新建一个开始整理吧" />;
+            return <NeteaseEmpty fill message={needle ? '没有匹配的歌单' : '还没有歌单'} hint="新建一个开始整理吧" />;
         }
         return (
             <>
