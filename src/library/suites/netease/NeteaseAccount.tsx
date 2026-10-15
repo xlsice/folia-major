@@ -117,8 +117,8 @@ const LoginCard: React.FC<{
     return (
         <>
             <div className="px-5 pb-2 pt-5 text-center">
-                <h2 className="text-base font-semibold" style={{ color: 'var(--nt-text)' }}>{say(login.copy.title)}</h2>
-                <p className="mt-1 text-xs" style={{ color: 'var(--nt-text-faint)' }}>{say(login.copy.note)}</p>
+                <h2 className="nt-t-title" style={{ color: 'var(--nt-text)' }}>{say(login.copy.title)}</h2>
+                <p className="mt-1 nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>{say(login.copy.note)}</p>
             </div>
 
             {/* 多登录方式：QQ 两步式 */}
@@ -130,7 +130,7 @@ const LoginCard: React.FC<{
                             type="button"
                             disabled={!interactive}
                             onClick={() => onSelectMethod(method.id)}
-                            className="mb-2 w-full rounded-lg py-2.5 text-sm"
+                            className="mb-2 w-full rounded-lg py-2.5 nt-t-item"
                             style={{ background: 'var(--nt-hover)', color: 'var(--nt-text)' }}
                         >
                             {method.labelKey}
@@ -144,13 +144,13 @@ const LoginCard: React.FC<{
                 {backendDown ? (
                     <div className="flex flex-col items-center gap-2 px-4 py-6 text-center">
                         <AlertCircle size={26} style={{ color: '#e5484d' }} />
-                        <p className="text-xs" style={{ color: 'var(--nt-text-muted)' }}>登录服务未运行</p>
+                        <p className="nt-t-meta" style={{ color: 'var(--nt-text-muted)' }}>登录服务未运行</p>
                         {can.has('account-backend-restart') && (
                             <button
                                 type="button"
                                 onClick={onRestartBackend}
                                 disabled={!login.backend.canRestart || login.backend.restarting}
-                                className="mt-1 rounded-full px-4 py-2 text-xs disabled:opacity-40"
+                                className="mt-1 rounded-full px-4 py-2 nt-t-label disabled:opacity-40"
                                 style={{ background: 'var(--nt-accent)', color: 'var(--nt-on-accent)' }}
                             >
                                 {login.backend.restarting ? '重启中…' : '重启服务'}
@@ -174,7 +174,7 @@ const LoginCard: React.FC<{
 
             {/* 状态行 */}
             {statusText.length > 0 && (
-                <p className="px-5 pb-1 text-center text-xs" style={{ color: 'var(--nt-text-muted)' }}>
+                <p className="px-5 pb-1 text-center nt-t-meta" style={{ color: 'var(--nt-text-muted)' }}>
                     {statusText}
                 </p>
             )}
@@ -185,20 +185,20 @@ const LoginCard: React.FC<{
                     <button
                         type="button"
                         onClick={onRetry}
-                        className="rounded-full px-5 py-2 text-sm"
+                        className="rounded-full px-5 py-2 nt-t-item"
                         style={{ background: 'var(--nt-accent)', color: 'var(--nt-on-accent)' }}
                     >
                         重试
                     </button>
                 )}
                 {cooldown > 0 && (
-                    <span className="text-xs" style={{ color: 'var(--nt-text-faint)' }}>{cooldown} 秒后可重试</span>
+                    <span className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>{cooldown} 秒后可重试</span>
                 )}
                 {login.failure && can.has('account-login-diagnostics') && (
                     <button
                         type="button"
                         onClick={onDiagnostics}
-                        className="rounded-full px-3 py-2 text-xs"
+                        className="rounded-full px-3 py-2 nt-t-label"
                         style={{ background: 'var(--nt-hover)', color: 'var(--nt-text-muted)' }}
                     >
                         复制诊断
@@ -207,7 +207,7 @@ const LoginCard: React.FC<{
                 <button
                     type="button"
                     onClick={onClose}
-                    className="rounded-full px-3 py-2 text-xs"
+                    className="rounded-full px-3 py-2 nt-t-label"
                     style={{ background: 'var(--nt-hover)', color: 'var(--nt-text-muted)' }}
                 >
                     关闭
@@ -227,19 +227,19 @@ const SwitchCard: React.FC<{
 }> = ({ fromLabel, toLabel, interactive, onConfirm, onCancel }) => (
     <>
         <div className="px-5 pb-2 pt-5 text-center">
-            <h2 className="text-base font-semibold" style={{ color: 'var(--nt-text)' }}>切换音乐平台</h2>
-            <p className="mt-2 text-sm" style={{ color: 'var(--nt-text-muted)' }}>
+            <h2 className="nt-t-title" style={{ color: 'var(--nt-text)' }}>切换音乐平台</h2>
+            <p className="mt-2 nt-t-meta" style={{ color: 'var(--nt-text-muted)' }}>
                 从 <span style={{ color: 'var(--nt-text)' }}>{fromLabel}</span> 切到{' '}
                 <span style={{ color: 'var(--nt-text)' }}>{toLabel}</span>？
             </p>
-            <p className="mt-1 text-xs" style={{ color: 'var(--nt-text-faint)' }}>正在播放与队列会被清空</p>
+            <p className="mt-1 nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>正在播放与队列会被清空</p>
         </div>
         <div className="flex gap-2 px-5 pb-5 pt-3">
             <button
                 type="button"
                 onClick={onCancel}
                 disabled={!interactive}
-                className="flex-1 rounded-full py-2.5 text-sm"
+                className="flex-1 rounded-full py-2.5 nt-t-item"
                 style={{ background: 'var(--nt-hover)', color: 'var(--nt-text-muted)' }}
             >
                 取消
@@ -248,7 +248,7 @@ const SwitchCard: React.FC<{
                 type="button"
                 onClick={onConfirm}
                 disabled={!interactive}
-                className="flex flex-1 items-center justify-center gap-1 rounded-full py-2.5 text-sm"
+                className="flex flex-1 items-center justify-center gap-1 rounded-full py-2.5 nt-t-item"
                 style={{ background: 'var(--nt-accent)', color: 'var(--nt-on-accent)' }}
             >
                 <Check size={14} />切换

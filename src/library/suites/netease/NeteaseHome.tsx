@@ -182,18 +182,18 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                 </span>
                 {typeof collection.trackCount === 'number' && (
                     <span
-                        className="absolute bottom-1.5 right-2 text-[11px] tabular-nums"
+                        className="absolute bottom-1.5 right-2 nt-t-caption"
                         style={{ color: 'rgba(255,255,255,0.85)', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}
                     >
                         {collection.trackCount > 999 ? '999+' : collection.trackCount}
                     </span>
                 )}
             </div>
-            <span className="truncate text-[13px] leading-tight" style={{ color: 'var(--nt-text)' }}>
+            <span className="truncate nt-t-item" style={{ color: 'var(--nt-text)' }}>
                 {collection.name}
             </span>
             {typeof collection.trackCount === 'number' && (
-                <span className="text-[11px]" style={{ color: 'var(--nt-text-faint)' }}>
+                <span className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
                     {collection.trackCount} 首
                 </span>
             )}
@@ -292,16 +292,16 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                                 {dailyCover ? (
                                     <img src={dailyCover} alt="" className="h-full w-full object-cover" />
                                 ) : (
-                                    <span className="flex h-full w-full items-center justify-center text-[10px] font-semibold" style={{ color: 'var(--nt-text)' }}>
+                                    <span className="flex h-full w-full items-center justify-center nt-t-caption" style={{ color: 'var(--nt-text)', fontWeight: 600 }}>
                                         每日<br />推荐
                                     </span>
                                 )}
                             </span>
-                            <span className="text-xs font-medium" style={{ color: 'var(--nt-text)' }}>
+                            <span className="nt-t-item" style={{ color: 'var(--nt-text)' }}>
                                 每日推荐
                             </span>
                             {dailyCount > 0 && (
-                                <span className="text-[10px]" style={{ color: 'var(--nt-text-faint)' }}>{dailyCount} 首</span>
+                                <span className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>{dailyCount} 首</span>
                             )}
                         </button>
                         <button
@@ -322,7 +322,7 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                                     </span>
                                 )}
                             </span>
-                            <span className="text-xs font-medium" style={{ color: 'var(--nt-text)' }}>私人 FM</span>
+                            <span className="nt-t-item" style={{ color: 'var(--nt-text)' }}>私人 FM</span>
                         </button>
                     </div>
                 )}
@@ -386,10 +386,10 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                         ) : null}
                     </span>
                     <div className="min-w-0 flex-1">
-                        <div className="truncate text-base font-semibold" style={{ color: 'var(--nt-text)' }}>
+                        <div className="truncate nt-t-display" style={{ color: 'var(--nt-text)' }}>
                             {user.nickname}
                         </div>
-                        <div className="text-xs" style={{ color: 'var(--nt-text-faint)' }}>
+                        <div className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
                             {onlineCollections.length} 个歌单
                         </div>
                     </div>
@@ -414,8 +414,8 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                         <span className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: 'var(--nt-hover)' }}>
                             <ListMusic size={17} style={{ color: 'var(--nt-text-muted)' }} />
                         </span>
-                        <span className="flex-1 text-sm" style={{ color: 'var(--nt-text)' }}>全部歌曲</span>
-                        <span className="text-xs" style={{ color: 'var(--nt-text-faint)' }}>{localSongs.length}</span>
+                        <span className="flex-1 nt-t-title" style={{ color: 'var(--nt-text)' }}>全部歌曲</span>
+                        <span className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>{localSongs.length}</span>
                     </div>
                     {localCards.map(item => (
                         <button
@@ -428,7 +428,7 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                             <span className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: 'var(--nt-hover)' }}>
                                 <FolderOpen size={16} style={{ color: 'var(--nt-text-muted)' }} />
                             </span>
-                            <span className="flex-1 truncate text-left text-sm" style={{ color: 'var(--nt-text)' }}>{item.name}</span>
+                            <span className="flex-1 truncate text-left nt-t-item" style={{ color: 'var(--nt-text)' }}>{item.name}</span>
                         </button>
                     ))}
                 </div>
@@ -438,7 +438,7 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                     <button
                         type="button"
                         onClick={() => setLocalMusicState({ ...localMusicState, activeRow: 0 as 0 | 1 | 2 | 3 })}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-full py-2.5 text-xs"
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-full py-2.5 nt-t-label"
                         style={{ background: 'var(--nt-hover)', color: 'var(--nt-text-muted)' }}
                     >
                         <Plus size={14} />导入
@@ -448,7 +448,7 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                     <button
                         type="button"
                         onClick={() => void onRefreshLocalSongs()}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-full py-2.5 text-xs"
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-full py-2.5 nt-t-label"
                         style={{ background: 'var(--nt-hover)', color: 'var(--nt-text-muted)' }}
                     >
                         <RefreshCw size={13} />刷新
@@ -489,7 +489,7 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                     <span className="flex h-10 w-10 items-center justify-center rounded-lg" style={{ background: 'var(--nt-hover)' }}>
                         <Radio size={18} style={{ color: 'var(--nt-text-muted)' }} />
                     </span>
-                    <span className="flex-1 text-left text-sm" style={{ color: 'var(--nt-text)' }}>连接自建音乐库</span>
+                    <span className="flex-1 text-left nt-t-item" style={{ color: 'var(--nt-text)' }}>连接自建音乐库</span>
                 </button>
             </div>
         </>

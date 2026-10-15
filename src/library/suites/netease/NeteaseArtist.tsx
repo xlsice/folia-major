@@ -43,7 +43,7 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                 <button type="button" onClick={onBack} aria-label="返回" className="rounded-full p-2">
                     <ChevronLeft size={20} style={{ color: 'var(--nt-text)' }} />
                 </button>
-                <span className="min-w-0 flex-1 truncate px-1 text-sm font-medium" style={{ color: 'var(--nt-text)' }}>
+                <span className="min-w-0 flex-1 truncate px-1 nt-t-item" style={{ color: 'var(--nt-text)' }}>
                     {artistName}
                 </span>
                 {can.has('reload') && (
@@ -65,7 +65,7 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                             <img src={snapshot.detail.coverUrl} alt="" className="h-full w-full object-cover" />
                         )}
                     </div>
-                    <h1 className="mt-1 text-base font-bold" style={{ color: 'var(--nt-text)' }}>{artistName}</h1>
+                    <h1 className="mt-1 nt-t-display" style={{ color: 'var(--nt-text)' }}>{artistName}</h1>
                 </div>
 
                 {snapshot?.status === 'loading' && !topSongs.length && !albums.length && (
@@ -88,7 +88,7 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                                     else playback.playAll(topSongs);
                                 }}
                             />
-                            <span className="text-sm font-semibold" style={{ color: 'var(--nt-text)' }}>
+                            <span className="nt-t-title" style={{ color: 'var(--nt-text)' }}>
                                 热门歌曲
                             </span>
                         </div>
@@ -97,7 +97,7 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                                 <button
                                     type="button"
                                     onClick={() => playback.enqueueAll(topSongs, { suppressToast: true })}
-                                    className="rounded-full px-3 py-1.5 text-xs"
+                                    className="rounded-full px-3 py-1.5 nt-t-label"
                                     style={{ background: 'var(--nt-hover)', color: 'var(--nt-text-muted)' }}
                                 >
                                     收藏热门歌曲
@@ -111,7 +111,7 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                                     className="flex items-center gap-3 px-4 py-2.5"
                                     style={{ borderTop: index === 0 ? 'none' : '1px solid var(--nt-divider)' }}
                                 >
-                                    <span className="w-5 shrink-0 text-center text-xs tabular-nums" style={{ color: 'var(--nt-text-faint)' }}>
+                                    <span className="w-5 shrink-0 text-center nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
                                         {index + 1}
                                     </span>
                                     <button
@@ -120,10 +120,10 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                                         onClick={() => playback.playTrack(track, topSongs)}
                                         className="flex min-w-0 flex-1 flex-col items-start text-left"
                                     >
-                                        <span className="max-w-full truncate text-sm" style={{ color: 'var(--nt-text)' }}>
+                                        <span className="max-w-full truncate nt-t-item" style={{ color: 'var(--nt-text)' }}>
                                             {track.name}
                                         </span>
-                                        <span className="max-w-full truncate text-xs" style={{ color: 'var(--nt-text-faint)' }}>
+                                        <span className="max-w-full truncate nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
                                             {track.album?.name ?? ''}
                                         </span>
                                     </button>
@@ -165,9 +165,9 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                                             <img src={album.coverUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
                                         )}
                                     </div>
-                                    <span className="truncate text-xs" style={{ color: 'var(--nt-text)' }}>{album.name}</span>
+                                    <span className="truncate nt-t-item" style={{ color: 'var(--nt-text)' }}>{album.name}</span>
                                     {album.publishedAt ? (
-                                        <span className="text-[11px]" style={{ color: 'var(--nt-text-faint)' }}>
+                                        <span className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
                                             {new Date(album.publishedAt).getFullYear()}
                                         </span>
                                     ) : null}
@@ -183,7 +183,7 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                         <button
                             type="button"
                             onClick={() => resource?.retryAlbums()}
-                            className="rounded-full px-4 py-2 text-xs"
+                            className="rounded-full px-4 py-2 nt-t-label"
                             style={{ background: 'var(--nt-hover)', color: 'var(--nt-text-muted)' }}
                         >
                             继续加载专辑

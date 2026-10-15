@@ -143,16 +143,16 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
                     className="flex min-w-0 flex-1 flex-col items-start py-0.5 text-left"
                 >
                     <span
-                        className="max-w-full truncate text-sm"
+                        className="max-w-full truncate nt-t-item"
                         style={{ color: 'var(--nt-text)' }}
                     >
                         {track.name}
                     </span>
-                    <span className="max-w-full truncate text-xs" style={{ color: 'var(--nt-text-faint)' }}>
+                    <span className="max-w-full truncate nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
                         {artistName}
                     </span>
                 </button>
-                <span className="shrink-0 text-xs tabular-nums" style={{ color: 'var(--nt-text-faint)' }}>
+                <span className="shrink-0 nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
                     {formatTrackDuration(track.durationMs)}
                 </span>
                 {/* ⋯ 常显 */}
@@ -173,7 +173,7 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
                 >
                     <ChevronLeft size={20} style={{ color: 'var(--nt-text)' }} />
                 </button>
-                <span className="min-w-0 flex-1 truncate px-1 text-sm font-medium" style={{ color: 'var(--nt-text)' }}>
+                <span className="min-w-0 flex-1 truncate px-1 nt-t-item" style={{ color: 'var(--nt-text)' }}>
                     {title}
                 </span>
                 {headerActions.length > 0 && (
@@ -193,15 +193,15 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
                         )}
                     </div>
                     <div className="flex min-w-0 flex-1 flex-col justify-end gap-1.5">
-                        <h1 className="line-clamp-2 text-lg font-bold leading-tight" style={{ color: 'var(--nt-text)' }}>
+                        <h1 className="line-clamp-2 nt-t-display" style={{ color: 'var(--nt-text)' }}>
                             {title}
                         </h1>
                         {detail?.creator && (
-                            <span className="truncate text-xs" style={{ color: 'var(--nt-text-muted)' }}>
+                            <span className="truncate nt-t-meta" style={{ color: 'var(--nt-text-muted)' }}>
                                 {detail.creator.nickname}
                             </span>
                         )}
-                        <span className="text-xs" style={{ color: 'var(--nt-text-faint)' }}>
+                        <span className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
                             {tracks.length} 首
                         </span>
                     </div>
@@ -281,7 +281,7 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
                         <button
                             type="button"
                             onClick={() => resource?.resumeSync()}
-                            className="rounded-full px-4 py-2 text-xs"
+                            className="rounded-full px-4 py-2 nt-t-label"
                             style={{ background: 'var(--nt-hover)', color: 'var(--nt-text-muted)' }}
                         >
                             继续加载剩余歌曲

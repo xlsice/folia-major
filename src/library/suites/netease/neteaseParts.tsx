@@ -41,7 +41,8 @@ export const NeteaseTabBar: React.FC<{
                         style={{ color: active ? 'var(--nt-accent)' : 'var(--nt-text-muted)' }}
                     >
                         {tab.icon}
-                        <span className="text-[10px] leading-none">{tab.label}</span>
+                        {/* 原来 text-[10px] leading-none：行高等于字号，汉字/假名有裁切风险。 */}
+                        <span className="nt-t-label">{tab.label}</span>
                     </button>
                 );
             })}
@@ -65,7 +66,7 @@ export const NeteaseHeader: React.FC<{
     >
         {leading}
         <h1
-            className={`min-w-0 flex-1 truncate text-base font-semibold ${align === 'left' ? 'text-left' : 'text-center'}`}
+            className={`nt-t-display min-w-0 flex-1 truncate ${align === 'left' ? 'text-left' : 'text-center'}`}
             style={{ color: 'var(--nt-text)' }}
         >
             {title}
@@ -94,7 +95,7 @@ export const NeteaseSearchBar: React.FC<{
                 value={query}
                 onChange={event => onQueryChange(event.target.value)}
                 placeholder={placeholder}
-                className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                className="min-w-0 flex-1 bg-transparent outline-none nt-t-item"
                 style={{ color: 'var(--nt-text)' }}
             />
             {query.length > 0 && (
@@ -179,7 +180,7 @@ export const NeteaseMoreMenu: React.FC<{
                                 setOpen(false);
                                 action.onSelect();
                             }}
-                            className="block w-full px-3 py-2.5 text-left text-sm transition-colors"
+                            className="block w-full px-3 py-2.5 text-left nt-t-label transition-colors"
                             style={{
                                 color: action.tone === 'danger' ? '#e5484d' : 'var(--nt-text)',
                             }}
@@ -199,7 +200,7 @@ export const NeteaseTrackIndex: React.FC<{
     isPlaying: boolean;
 }> = ({ index, isPlaying }) => (
     <span
-        className="w-6 shrink-0 text-center text-xs tabular-nums"
+        className="w-6 shrink-0 text-center nt-t-meta"
         style={{ color: isPlaying ? 'var(--nt-accent)' : 'var(--nt-text-faint)' }}
     >
         {isPlaying ? (
@@ -276,10 +277,10 @@ export const NeteaseMiniPlayer: React.FC<{
             </div>
 
             <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-[13px] leading-tight" style={{ color: 'var(--nt-text)' }}>
+                <span className="truncate nt-t-item" style={{ color: 'var(--nt-text)' }}>
                     {title}
                 </span>
-                <span className="truncate text-[11px] leading-tight" style={{ color: 'var(--nt-text-faint)' }}>
+                <span className="truncate nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
                     {subtitle}
                 </span>
             </div>
@@ -356,10 +357,10 @@ export const NeteasePlayButton: React.FC<{
 
 /** 分区标题（列表上方的灰字小标题）。 */
 export const NeteaseSectionTitle: React.FC<{ children: React.ReactNode; count?: number }> = ({ children, count }) => (
-    <div className="flex items-baseline gap-2 px-4 pb-1.5 pt-4">
-        <span className="text-sm font-semibold" style={{ color: 'var(--nt-text)' }}>{children}</span>
+    <div className="flex items-baseline gap-2 px-4 pb-2 pt-6">
+        <span className="nt-t-title" style={{ color: 'var(--nt-text)' }}>{children}</span>
         {typeof count === 'number' && (
-            <span className="text-xs" style={{ color: 'var(--nt-text-faint)' }}>{count}</span>
+            <span className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>{count}</span>
         )}
     </div>
 );
@@ -367,8 +368,8 @@ export const NeteaseSectionTitle: React.FC<{ children: React.ReactNode; count?: 
 /** 空状态占位。列表为空时给一句说明，不留白屏。 */
 export const NeteaseEmpty: React.FC<{ message: string; hint?: string }> = ({ message, hint }) => (
     <div className="flex flex-col items-center justify-center gap-1 px-8 py-16 text-center">
-        <p className="text-sm" style={{ color: 'var(--nt-text-muted)' }}>{message}</p>
-        {hint && <p className="text-xs" style={{ color: 'var(--nt-text-faint)' }}>{hint}</p>}
+        <p className="nt-t-title" style={{ color: 'var(--nt-text-muted)' }}>{message}</p>
+        {hint && <p className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>{hint}</p>}
     </div>
 );
 
@@ -382,7 +383,7 @@ export const NeteaseCollapsible: React.FC<{ label: string; children: React.React
                 onClick={() => setOpen(value => !value)}
                 className="flex w-full items-center justify-between px-4 py-3"
             >
-                <span className="text-sm" style={{ color: 'var(--nt-text-muted)' }}>{label}</span>
+                <span className="nt-t-item" style={{ color: 'var(--nt-text-muted)' }}>{label}</span>
                 <ChevronDown
                     size={15}
                     style={{
@@ -392,7 +393,7 @@ export const NeteaseCollapsible: React.FC<{ label: string; children: React.React
                     }}
                 />
             </button>
-            {open && <div className="px-4 pb-3 text-sm" style={{ color: 'var(--nt-text-muted)' }}>{children}</div>}
+            {open && <div className="px-4 pb-3 nt-t-meta" style={{ color: 'var(--nt-text-muted)' }}>{children}</div>}
         </div>
     );
 };
@@ -406,10 +407,29 @@ export const formatTrackDuration = (durationMs?: number): string => {
     return `${minutes}:${String(seconds).padStart(2, '0')}`;
 };
 
-/** 全 suite 共用的样式表：滚动条隐藏、均衡器动画。
+/** 全 suite 共用的样式表：字阶、滚动条隐藏、均衡器动画。
+ *
  *  安全区**不在这张表里**：底部避让由 useSafeInsets 量出来，以内联 padding 施加
- *  （env(safe-area-inset-bottom) 在本机恒为 0，写进 CSS 等于没写）。 */
+ *  （env(safe-area-inset-bottom) 在本机恒为 0，写进 CSS 等于没写）。
+ *
+ *  字阶（2026-10-15 重设计第二步）：**六级，锁死字号 + 字重 + 行高**，组件不再自己写
+ *  text-sm / text-[13px]。改之前实测出来的现状是 7 个字号挤在 10–16px、页标题只比卡片
+ *  标题大 3px、行高比在 1.00 / 1.25 / 1.33 / 1.43 / 1.50 之间混用——主次几乎消失。
+ *
+ *  行高**跟字号档走，不跟组件走**：≥17px 给 1.4 倍，其余 1.38–1.45。
+ *  这条直接修掉一个 bug 级取值：底部 tab 标签原来是 text-[10px] leading-none，
+ *  **行高等于字号**，「专辑」「推荐」这些汉字和假名有溢出裁切风险。
+ *
+ *  tabular-nums：时长、计数、序号一律等宽数字，修掉列表滚动时数字宽度跳动。
+ */
 export const NETEASE_STYLES = `
+.nt-t-display { font-size:24px; font-weight:700; line-height:32px; letter-spacing:-.3px; font-variant-numeric:tabular-nums; }
+.nt-t-title   { font-size:17px; font-weight:600; line-height:24px; letter-spacing:-.1px; font-variant-numeric:tabular-nums; }
+.nt-t-item    { font-size:15px; font-weight:500; line-height:21px; font-variant-numeric:tabular-nums; }
+.nt-t-meta    { font-size:13px; font-weight:400; line-height:18px; font-variant-numeric:tabular-nums; }
+.nt-t-label   { font-size:12px; font-weight:500; line-height:16px; letter-spacing:.2px; }
+.nt-t-caption { font-size:11px; font-weight:400; line-height:15px; font-variant-numeric:tabular-nums; }
+
 @keyframes nt-eq { from { transform: scaleY(0.45); } to { transform: scaleY(1); } }
 .nt-scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .nt-scroll::-webkit-scrollbar { display: none; }
