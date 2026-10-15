@@ -1467,6 +1467,104 @@ C:\Users\wodes\XLS\APP\Folia-Android\Folia-Android-debug-0.7.18.apk   （归档�
 
 ---
 
+### `dev-2026-10-15-android-redesign` — 安卓界面重设计：字体 / 字阶 / 间距（视觉层第一步）
+
+**性质**：功能（视觉重构）。方向稿 `ANDROID-REDESIGN.md` + 规格稿 `ANDROID-REDESIGN-SPEC.md`，
+代码分三个 commit 落地：锁字体 → 建字阶 → 统一间距。**只动表达层**，路由、导航、
+命令面板入口、provider、请求链路一律没碰，桌面端 Electron 表现零变化。
+
+⚠️ 全部结论来自真机 CDP `Runtime.evaluate` 实测取证，不是主观审美判断。
+审计设备：一加 Ace 3 / Android 16 / 1264×2780 / dpr 3.5 / CSS 视口 361×794。
+
+#### 第 1 步：锁字体（`d9c6e871`）
+
+**问题**：UI 声明了 sans-serif 栈，真机却渲染成**宋体**（横细竖粗 + 三角衬线末端）。
+取证：全站 0 元素引用衬线、`settings get system font_name = null`、
+0 元素 computed 含 `Folia Noto Serif SC`、设备无字体设置入口。
+⇒ 根因不是字体没配，是**整套 UI 根本没锁字体**，把渲染结果交给了系统默认。
+
+- `src/index.css` 新增 `Folia Noto Sans SC` 四字重 `@font-face`
+- `src/library/suites/netease/neteaseParts.tsx` 的 `NeteaseShell` 挂 `fontFamily`
+- 兜底链**显式点名** `'Noto Sans CJK SC'`、`'Noto Sans SC'` —— webfont 挂了也不会再退到衬线
+- `public/fonts/` 随包内置 8 个 woff2（CJK 4.42 MB + latin 52 KB），`.gitattributes` 加 `*.woff2 -text`
+
+**为什么必须内置而不能走 CDN**（这一条花了约十轮工具调用才定位）：
+
+| 验证 | 结果 | 排除了什么 |
+| --- | --- | --- |
+| 设备 shell `curl` 同一 URL | 200 / 1,142,552 B | 不是没网 |
+| 响应头 `access-control-allow-origin: *` | 有 | 不是 CORS |
+| WebView `fetch` 跨域 httpbin | 204 正常 | 跨域整体通 |
+| 同 CDN 的 13KB latin 子集 / package.json | 成功 | 不是 CDN、不是域名、不是体积上限 |
+| **1.09MB `chinese-simplified`** | **FAIL，耗时 12ms** | — |
+
+差别在**传输方式**：小文件响应带 `Content-Length`，大文件走 **chunked**，
+这台 WebView 对后者直接拒。**12ms 是即时拒绝不是超时** —— 看到「秒失败」先想策略拦截，
+别往超时/带宽方向查。⇒ 通则：WebView 里 webfont 失败，**先量文件大小分档对照**。
+随包内置的附带好处是断网可用，正合音乐 App 需求。代价 APK 17.6 → 20.9 MB。
+
+⚠️ 字体**只挂安卓端**：`NeteaseShell` 是桌面/安卓共用的，用仓库既有的**两道闸**
+（`VITE_ANDROID_BUILD` + `Capacitor.isNativePlatform()`，同 `nativeMediaSession.ts`）。
+`Folia Noto Serif SC` 保留，它服务桌面端与歌词可视化。
+
+#### 第 2 步：6 级字阶（`2df787ee`）
+
+**问题**：7 档字号挤在 10–16px，页标题 16 只比卡片标题 13 大 3px；
+行高比 1.00 / 1.25 / 1.33 / 1.43 / 1.50 混用；tab 标签 10px/10px
+（**行高等于字号**，汉字假名有裁切风险）。
+
+在 `NETEASE_STYLES` 里建 6 个字阶类，`display 24/700` → `title 17/600` →
+`item 15/500` → `meta 13/400` → `label 12/500` → `caption 11/400`，
+4 个 surface + 11 个零件共 **67 处字号用法全部迁移，0 残留原始字号类**。
+时长 / 计数 / 序号加 `tabular-nums`。
+
+⭐ **做成类而不是散落的字号值，是为了让「系统」变成强制的**，
+否则下次各写各的又会退回去。真机实测落地值逐项吻合规格；
+tab 标签实测 `scrollHeight 17 / 高度 16`，无裁切。
+
+#### 第 3 步：间距刻度与屏幕边距（`7a3416f8`）
+
+**问题**：同屏 `px-3`(12) 与 `px-4`(16) 混排导致**左边缘错位**；
+非 4pt 倍数的间距值共 **27 处**（6px×4 / 10px×8 / 14px×2 / 20px×11）。
+
+- 屏幕边距统一 16px：`NeteaseHeader` / `NeteaseSearchBar` / `NeteaseMiniPlayer` 外层，
+  以及 `NeteaseCollection` 列表行
+  （⭐ `NeteaseArtist` 同类行**本来就是** `px-4` —— 这才是错位方，不是 Artist）
+- 27 处非法值全部吸附到刻度，跨 4 个 surface + `neteaseParts`
+- `neteaseTheme.ts` 写入 `--nt-space-*` 七档 token（2 发丝 / 4 / 8 / 12 / 16 / 24 / 32），
+  并注明「className 里的间距必须吸附此表」
+- `NeteaseHeader` `min-h` 52 → 56，容纳 24px 标题行高
+- 修正规格 §3.3 自相矛盾处：原文「列间距统一 12（两向都改 12）」与「行间距统一 16」冲突，
+  改为**列 12 / 行 16**（行内除封面还夹标题+计数两行文字），快捷卡纯封面网格行列同距 12
+
+#### 验证
+
+- `tsc --noEmit` exit 0；`BUILD SUCCESSFUL`；APK 20.9 MB
+- 字体：同区域裁剪对照（宋体 vs 黑体），`document.fonts` 四字重全 `loaded`
+- 字阶/间距：CDP 量 `getComputedStyle`，实测值与规格逐项吻合
+- 边距：写脚本量所有「贴着 shell 左边缘」的元素 —— 8 个中 **6 个 `padL=16px`**；
+  另 2 个是搜索框与迷你条胶囊的**内部内衬**，作用域正确（12/8px 在 16px 容器内）
+
+#### 踩坑
+
+- ⚠️ **PowerShell 5.1 的 `Get-Content -Raw` 按 ANSI 读文件**，
+  用它做「读-改-写」批量替换 TSX 会把中文全写坏（`首`→`棣?`，`git diff` 显示整文件重写）。
+  ⛔ **改仓库内 UTF-8 文本文件只用 `edit` / `write` 工具，绝不用 shell 做读-改-写流水线**。
+  真出事了靠 `git diff > docs/dev/.tmp/backup-all.patch` + 文件双备份秒回滚。
+- ⚠️ **改 JSX 不要做前缀式匹配**：`old_string` 只写到 `{item.name}<`，
+  新串带了 `</span>`，和原文的 `</span>` 叠成 `</span></span>`，tsc 报 `TS1382`。
+  改 JSX 一律带上完整开闭标签做整块匹配。
+- ⚠️ `neteaseParts.tsx` 是**混合文件**（字阶类、零件、shell 都在里面），
+  commit 必须**按 hunk 拆**，不能按文件拆，否则三个 commit 会互相污染。
+
+#### 下一步（尚未做）
+
+第四步色彩约束（5 档中性阶亮度差下限、`textFaint` 改实色修 2.20:1、
+`onAccent` 提升算法修 3.52:1、`placeholderTint` 去掉 `color`、新增 `--nt-danger`）、
+第五步组件规格与层级（三级高度、4 档圆角、11 个零件收口）。
+
+---
+
 ## 格式约定
 
 ```markdown
