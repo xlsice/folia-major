@@ -148,6 +148,18 @@ export const paletteToCssVars = (palette: NeteasePalette): React.CSSProperties =
         // 注意：变量本身任何环境都定义，但**只有安卓端才真的用**（见 isAndroidShell 与
         // NeteaseShell 里的 fontFamily 开关）。桌面端的 netease suite 保持原样不动。
         '--nt-font': "'Folia Noto Sans SC', 'Noto Sans CJK SC', 'Noto Sans SC', Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
+        // 间距刻度（4pt 基准 + 一个半档发丝位）。
+        // Tailwind 的 p-1 / p-2 / p-3 / p-4 / p-6 正好对应 4 / 8 / 12 / 16 / 24，
+        // **className 里的间距必须吸附到这张表**，不允许再出现 1.5 / 2.5 / 3.5 / 5
+        // 这些 Tailwind 默认档——它们换算出来是 6 / 10 / 14 / 20 px，全都不在刻度上。
+        // 改造前实测：全 suite 有 27 处这类非法值，现已清零。
+        '--nt-space-hair': '2px',    // 发丝微调：图标与文字的极窄间距、清除键内衬
+        '--nt-space-1': '4px',       // 图标与文字、chip 内间距
+        '--nt-space-2': '8px',       // 卡内元素纵向间距
+        '--nt-space-3': '12px',      // 卡内边距、栅格列间距
+        '--nt-space-4': '16px',      // **屏幕左右边距**、列表项内边距
+        '--nt-space-6': '24px',      // 区块之间、弹窗内边距
+        '--nt-space-8': '32px',      // 页面顶部大留白
         '--nt-bg': palette.bg,
         '--nt-surface': palette.surface,
         '--nt-elevated': palette.elevated,

@@ -410,7 +410,7 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
             <NeteaseSectionTitle>曲库</NeteaseSectionTitle>
             <div className="px-4">
                 <div className="overflow-hidden rounded-xl" style={{ background: 'var(--nt-surface)' }}>
-                    <div className="flex items-center gap-3 px-4 py-3.5">
+                    <div className="flex items-center gap-3 px-4 py-3">
                         <span className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: 'var(--nt-hover)' }}>
                             <ListMusic size={17} style={{ color: 'var(--nt-text-muted)' }} />
                         </span>
@@ -422,7 +422,7 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                             key={String(item.id)}
                             type="button"
                             onClick={() => setLocalMusicState({ ...localMusicState, activeRow: 1 as 0 | 1 | 2 | 3 })}
-                            className="flex w-full items-center gap-3 px-4 py-3.5"
+                            className="flex w-full items-center gap-3 px-4 py-3"
                             style={{ borderTop: '1px solid var(--nt-divider)' }}
                         >
                             <span className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: 'var(--nt-hover)' }}>
@@ -438,7 +438,7 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                     <button
                         type="button"
                         onClick={() => setLocalMusicState({ ...localMusicState, activeRow: 0 as 0 | 1 | 2 | 3 })}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-full py-2.5 nt-t-label"
+                        className="flex flex-1 items-center justify-center gap-1 rounded-full py-3 nt-t-label"
                         style={{ background: 'var(--nt-hover)', color: 'var(--nt-text-muted)' }}
                     >
                         <Plus size={14} />导入
@@ -448,7 +448,7 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                     <button
                         type="button"
                         onClick={() => void onRefreshLocalSongs()}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-full py-2.5 nt-t-label"
+                        className="flex flex-1 items-center justify-center gap-1 rounded-full py-3 nt-t-label"
                         style={{ background: 'var(--nt-hover)', color: 'var(--nt-text-muted)' }}
                     >
                         <RefreshCw size={13} />刷新

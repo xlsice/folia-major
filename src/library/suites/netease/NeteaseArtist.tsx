@@ -56,7 +56,7 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
 
             <div className="nt-scroll min-h-0 flex-1 pb-4">
                 {/* 艺人头部 */}
-                <div className="flex flex-col items-center gap-2 px-4 pb-5 pt-3">
+                <div className="flex flex-col items-center gap-2 px-4 pb-6 pt-3">
                     <div
                         className="h-28 w-28 overflow-hidden rounded-full"
                         style={placeholderTint(artistName, isDaylight)}
@@ -97,7 +97,7 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                                 <button
                                     type="button"
                                     onClick={() => playback.enqueueAll(topSongs, { suppressToast: true })}
-                                    className="rounded-full px-3 py-1.5 nt-t-label"
+                                    className="rounded-full px-3 py-2 nt-t-label"
                                     style={{ background: 'var(--nt-hover)', color: 'var(--nt-text-muted)' }}
                                 >
                                     收藏热门歌曲
@@ -108,7 +108,7 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                             {topSongs.map((track, index) => (
                                 <div
                                     key={`${String(track.id)}-${index}`}
-                                    className="flex items-center gap-3 px-4 py-2.5"
+                                    className="flex items-center gap-3 px-4 py-3"
                                     style={{ borderTop: index === 0 ? 'none' : '1px solid var(--nt-divider)' }}
                                 >
                                     <span className="w-5 shrink-0 text-center nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
@@ -155,7 +155,7 @@ const NeteaseArtist: React.FC<LibraryArtistSurfaceProps> = ({
                                     type="button"
                                     disabled={!isInteractive}
                                     onClick={() => onOpenAlbum(album.id, { name: album.name, coverUrl: album.coverUrl })}
-                                    className="flex flex-col gap-1.5 text-left"
+                                    className="flex flex-col gap-1 text-left"
                                 >
                                     <div
                                         className="aspect-square w-full overflow-hidden rounded-lg"

@@ -59,7 +59,7 @@ export const NeteaseHeader: React.FC<{
     trailing?: React.ReactNode;
 }> = ({ title, align = 'left', leading, trailing }) => (
     <header
-        className="flex min-h-[52px] shrink-0 items-center gap-2 px-3"
+        className="flex min-h-[56px] shrink-0 items-center gap-2 px-4"
         style={align === 'center'
             ? { justifyContent: 'center', position: 'relative' }
             : { justifyContent: 'flex-start' }}
@@ -85,7 +85,7 @@ export const NeteaseSearchBar: React.FC<{
     placeholder: string;
     onQueryChange: (query: string) => void;
 }> = ({ query, placeholder, onQueryChange }) => (
-    <div className="px-3 pb-2 shrink-0">
+    <div className="px-4 pb-2 shrink-0">
         <div
             className="flex items-center gap-2 rounded-full px-3 py-2"
             style={{ background: 'var(--nt-field)' }}
@@ -180,7 +180,7 @@ export const NeteaseMoreMenu: React.FC<{
                                 setOpen(false);
                                 action.onSelect();
                             }}
-                            className="block w-full px-3 py-2.5 text-left nt-t-label transition-colors"
+                            className="block w-full px-3 py-3 text-left nt-t-label transition-colors"
                             style={{
                                 color: action.tone === 'danger' ? '#e5484d' : 'var(--nt-text)',
                             }}
@@ -244,7 +244,7 @@ export const NeteaseMiniPlayer: React.FC<{
      */
     progress?: number;
 }> = ({ title, subtitle, coverUrl, isPlaying, seed, onOpenPlayer, onTogglePlayback, onOpenQueue, progress = 0 }) => (
-    <div className="shrink-0 px-3 pb-2">
+    <div className="shrink-0 px-4 pb-2">
         <div
             role="button"
             tabIndex={0}
@@ -256,7 +256,7 @@ export const NeteaseMiniPlayer: React.FC<{
                 }
             }}
             // relative + overflow-hidden：进度条绝对贴在胶囊底边（网易云迷你条同款），靠这一层裁掉。
-            className="relative flex items-center gap-2.5 overflow-hidden rounded-lg px-2 py-1.5"
+            className="relative flex items-center gap-2 overflow-hidden rounded-lg px-2 py-2"
             style={{
                 background: 'var(--nt-elevated)',
                 border: '1px solid var(--nt-divider)',

@@ -132,7 +132,7 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
         return (
             <div
                 key={`${String(track.id)}-${index}`}
-                className="flex items-center gap-2 px-3 py-2"
+                className="flex items-center gap-2 px-4 py-2"
                 style={{ borderTop: index === 0 ? 'none' : '1px solid var(--nt-divider)' }}
             >
                 <NeteaseTrackIndex index={index + 1} isPlaying={rowPlaying(track)} />
@@ -192,7 +192,7 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
                             <img src={detail.coverUrl} alt="" className="h-full w-full object-cover" />
                         )}
                     </div>
-                    <div className="flex min-w-0 flex-1 flex-col justify-end gap-1.5">
+                    <div className="flex min-w-0 flex-1 flex-col justify-end gap-2">
                         <h1 className="line-clamp-2 nt-t-display" style={{ color: 'var(--nt-text)' }}>
                             {title}
                         </h1>

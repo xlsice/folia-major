@@ -116,21 +116,21 @@ const LoginCard: React.FC<{
 
     return (
         <>
-            <div className="px-5 pb-2 pt-5 text-center">
+            <div className="px-6 pb-2 pt-6 text-center">
                 <h2 className="nt-t-title" style={{ color: 'var(--nt-text)' }}>{say(login.copy.title)}</h2>
                 <p className="mt-1 nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>{say(login.copy.note)}</p>
             </div>
 
             {/* 多登录方式：QQ 两步式 */}
             {login.phase === 'choosing-method' && (
-                <div className="px-5 pb-2">
+                <div className="px-6 pb-2">
                     {login.methods.map(method => (
                         <button
                             key={method.id}
                             type="button"
                             disabled={!interactive}
                             onClick={() => onSelectMethod(method.id)}
-                            className="mb-2 w-full rounded-lg py-2.5 nt-t-item"
+                            className="mb-2 w-full rounded-lg py-3 nt-t-item"
                             style={{ background: 'var(--nt-hover)', color: 'var(--nt-text)' }}
                         >
                             {method.labelKey}
@@ -140,7 +140,7 @@ const LoginCard: React.FC<{
             )}
 
             {/* 二维码 / 故障 / 加载 */}
-            <div className="flex justify-center px-5 pb-4 pt-1">
+            <div className="flex justify-center px-6 pb-4 pt-1">
                 {backendDown ? (
                     <div className="flex flex-col items-center gap-2 px-4 py-6 text-center">
                         <AlertCircle size={26} style={{ color: '#e5484d' }} />
@@ -174,18 +174,18 @@ const LoginCard: React.FC<{
 
             {/* 状态行 */}
             {statusText.length > 0 && (
-                <p className="px-5 pb-1 text-center nt-t-meta" style={{ color: 'var(--nt-text-muted)' }}>
+                <p className="px-6 pb-1 text-center nt-t-meta" style={{ color: 'var(--nt-text-muted)' }}>
                     {statusText}
                 </p>
             )}
 
             {/* 动作 */}
-            <div className="flex items-center justify-center gap-2 px-5 pb-5 pt-2">
+            <div className="flex items-center justify-center gap-2 px-6 pb-6 pt-2">
                 {canRetry && can.has('account-login') && (
                     <button
                         type="button"
                         onClick={onRetry}
-                        className="rounded-full px-5 py-2 nt-t-item"
+                        className="rounded-full px-6 py-2 nt-t-item"
                         style={{ background: 'var(--nt-accent)', color: 'var(--nt-on-accent)' }}
                     >
                         重试
@@ -226,7 +226,7 @@ const SwitchCard: React.FC<{
     onCancel: () => void;
 }> = ({ fromLabel, toLabel, interactive, onConfirm, onCancel }) => (
     <>
-        <div className="px-5 pb-2 pt-5 text-center">
+        <div className="px-6 pb-2 pt-6 text-center">
             <h2 className="nt-t-title" style={{ color: 'var(--nt-text)' }}>切换音乐平台</h2>
             <p className="mt-2 nt-t-meta" style={{ color: 'var(--nt-text-muted)' }}>
                 从 <span style={{ color: 'var(--nt-text)' }}>{fromLabel}</span> 切到{' '}
@@ -234,12 +234,12 @@ const SwitchCard: React.FC<{
             </p>
             <p className="mt-1 nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>正在播放与队列会被清空</p>
         </div>
-        <div className="flex gap-2 px-5 pb-5 pt-3">
+        <div className="flex gap-2 px-6 pb-6 pt-3">
             <button
                 type="button"
                 onClick={onCancel}
                 disabled={!interactive}
-                className="flex-1 rounded-full py-2.5 nt-t-item"
+                className="flex-1 rounded-full py-3 nt-t-item"
                 style={{ background: 'var(--nt-hover)', color: 'var(--nt-text-muted)' }}
             >
                 取消
@@ -248,7 +248,7 @@ const SwitchCard: React.FC<{
                 type="button"
                 onClick={onConfirm}
                 disabled={!interactive}
-                className="flex flex-1 items-center justify-center gap-1 rounded-full py-2.5 nt-t-item"
+                className="flex flex-1 items-center justify-center gap-1 rounded-full py-3 nt-t-item"
                 style={{ background: 'var(--nt-accent)', color: 'var(--nt-on-accent)' }}
             >
                 <Check size={14} />切换
