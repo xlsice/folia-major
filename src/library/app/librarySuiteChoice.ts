@@ -71,7 +71,7 @@ export const confirmOnboardingLibrarySuite = (): void => {
 export const isWallLibrarySuite = (suiteId: LibrarySuiteId): boolean => suiteId === 'bravais';
 
 /**
- * 这套 suite 的**首页**自带底部播放条（netease），首页上因此不再挂宿主那条浮条。
+ * 这套 suite 自带底部播放条（netease），因此**整个 suite** 都不再挂宿主那条浮条。
  *
  * 为什么（2026-10-14 真机实测）：宿主浮条只有一个门槛 —— 有当前歌曲就渲染
  * （buildAppOverlaysModel.ts `floatingControls: currentSong ? … : null`）。
@@ -79,8 +79,11 @@ export const isWallLibrarySuite = (suiteId: LibrarySuiteId): boolean => suiteId 
  * 两条正好叠在同一处：宿主胶囊实测占 y=721..753，netease 标签栏占 725..778 ——
  * 结果是一颗 `00:00 —— 04:05` 的白色胶囊盖住「本地 / 专辑 / 远程」三个标签。
  *
- * 只在**首页**生效：netease 的 collection / artist / account 三个 surface 没有迷你播放条，
- * 那些页面上宿主浮条仍是唯一的播放入口，照常挂着。
+ * ⚠️ 函数名里的「Home」已经是历史遗留，实际范围是**整个 suite**，不只首页。
+ * 曾经按「collection / artist / account 三个 surface 没有迷你播放条，浮条是那几屏唯一的播放入口」
+ * 只在首页生效；2026-10-15 实测那个前提不成立 —— 胶囊占 y=713..762 而歌单滚动区 96..794 且
+ * `paddingBottom` 为 0，最后两行被整条压住读不了，用户拍板详情页也不显示。改名会牵动整个 overlay
+ * 模型，先把行为写准，名字留给下一次真要动这块的人。
  */
 export const librarySuiteOwnsHomePlayerBar = (suiteId: LibrarySuiteId): boolean => suiteId === 'netease';
 

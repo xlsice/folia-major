@@ -5,9 +5,12 @@ import React from 'react';
 // 而每一批都是「上一轮 group-hover 隐身」的高发区——这里一律常显，不做悬停显形。
 
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { ChevronDown, Disc3, ListMusic, MoreHorizontal, Pause, Play, Search, X } from 'lucide-react';
 import { paletteToCssVars, placeholderTint, isAndroidShell, type NeteasePalette } from './neteaseTheme';
 import { useSafeInsets } from './useSafeInsets';
+import { useReducedMotionFor } from '../../../hooks/useReducedMotionFor';
+import { NeteaseTabGlyph, TAB_PILL_SIZE, type NeteaseTabGlyphId } from './neteaseTabGlyphs';
 
 /**
  * 底部标签栏。几何照网易云手机版的真机实测（uiautomator dump，单位 dp）：
@@ -17,40 +20,121 @@ import { useSafeInsets } from './useSafeInsets';
  * `bottomInset` 传进来的就是那段手势区高度（原生 SafeInsetsPlugin 给的真值）。
  * **不能省**：省掉就贴到视口最底，点标签其实点在系统手势条上（2026-10-14 实测踩过）。
  */
+/**
+ * 底部标签栏。
+ *
+ * 选中态不是「把图标染成强调色」，而是**一枚实色圆球**：圆球平移到当前标签的位置，
+ * 该标签的文字与描边图标让位，由球里的白色实心图标代表自己（字形与生长动画见 neteaseTabGlyphs）。
+ * 未选中的标签保持原来的「描边图标 + 文字」，只做颜色区分。
+ *
+ * 圆球的位置是**量出来的**而不是按 index 算的：五个按钮虽然都是 flex-1，但标签栏宽度会随
+ * 窗口/手势区/字体缩放变，用 `宽度 × (i+0.5)/n` 会在某些宽度下差出小半个像素，久而久之圆球
+ * 看起来没对准。ResizeObserver 同时盯 nav 与每个按钮，任何一个尺寸变化都重算。
+ */
 export const NeteaseTabBar: React.FC<{
-    tabs: readonly { id: string; label: string; icon: React.ReactNode }[];
+    tabs: readonly { id: string; label: string; icon: React.ReactNode; glyph: NeteaseTabGlyphId }[];
     activeId: string;
     onChange: (id: string) => void;
     /** 底部手势区高度（CSS px）。用测量值，不用 env()——见 useSafeInsets 的注释。 */
     bottomInset: number;
-}> = ({ tabs, activeId, onChange, bottomInset }) => (
-    <div style={{ paddingBottom: bottomInset }} data-nt-tabbar-inset={bottomInset}>
-        <nav
-            className="flex shrink-0 items-stretch border-t"
-            style={{ background: 'var(--nt-elevated)', borderColor: 'var(--nt-divider)', height: '54px' }}
-        >
-            {tabs.map(tab => {
-                const active = tab.id === activeId;
-                return (
-                    <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => onChange(tab.id)}
-                        aria-current={active ? 'page' : undefined}
-                        className="flex flex-1 flex-col items-center justify-center gap-0.5 transition-colors"
-                        // tab 选中态是 12px 小字，不是大字：强调色填充色只有 3.4:1，
-                        // 当小字用会不合格，所以走单独校准过的 --nt-accent-text。
-                        style={{ color: active ? 'var(--nt-accent-text)' : 'var(--nt-text-muted)' }}
-                    >
-                        {tab.icon}
-                        {/* 原来 text-[10px] leading-none：行高等于字号，汉字/假名有裁切风险。 */}
-                        <span className="nt-t-label">{tab.label}</span>
-                    </button>
-                );
-            })}
-        </nav>
-    </div>
-);
+}> = ({ tabs, activeId, onChange, bottomInset }) => {
+    const navRef = React.useRef<HTMLElement | null>(null);
+    const tabRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
+    const [pillX, setPillX] = React.useState(0);
+    const [pillReady, setPillReady] = React.useState(false);
+    const reducedTab = useReducedMotionFor('uiMicroMotion');
+
+    const activeIndex = Math.max(0, tabs.findIndex(tab => tab.id === activeId));
+    const activeGlyph = tabs[activeIndex]?.glyph ?? 'compass';
+
+    /** 圆球左边缘相对 nav 左边缘的偏移 = 目标按钮水平中心 − 球半径。 */
+    const measure = React.useCallback(() => {
+        const nav = navRef.current;
+        const target = tabRefs.current[activeIndex];
+        if (!nav || !target) return;
+        const navRect = nav.getBoundingClientRect();
+        const tabRect = target.getBoundingClientRect();
+        setPillX(tabRect.left - navRect.left + tabRect.width / 2 - TAB_PILL_SIZE / 2);
+        setPillReady(true);
+    }, [activeIndex]);
+
+    React.useLayoutEffect(measure, [measure, tabs.length]);
+
+    // 窗口/手势区变化会让标签栏重新布局；不重算的话圆球会停在旧位置。
+    React.useEffect(() => {
+        const nav = navRef.current;
+        if (!nav) return undefined;
+        const observer = new ResizeObserver(measure);
+        observer.observe(nav);
+        tabRefs.current.forEach(node => node && observer.observe(node));
+        return () => observer.disconnect();
+    }, [measure, tabs.length]);
+
+    return (
+        <div style={{ paddingBottom: bottomInset }} data-nt-tabbar-inset={bottomInset}>
+            <nav
+                ref={navRef}
+                className="relative flex shrink-0 items-stretch border-t"
+                style={{ background: 'var(--nt-elevated)', borderColor: 'var(--nt-divider)', height: '54px' }}
+            >
+                {/* 圆球层：压在按钮之上且不吃点击事件（pointer-events-none），否则会挡住标签。 */}
+                <motion.div
+                    className="pointer-events-none absolute flex items-center justify-center rounded-full"
+                    style={{
+                        top: (54 - TAB_PILL_SIZE) / 2,
+                        left: 0,
+                        width: TAB_PILL_SIZE,
+                        height: TAB_PILL_SIZE,
+                        background: 'var(--nt-accent)',
+                        // 写死纯白（用户明确要求「白色实心」），不用 onAccent —— 后者在强调色
+                        // 偏浅时自动翻成近黑，与「白图标」的视觉约定不符。
+                        // 代价是浅强调色主题下对比度会掉下来；若日后要补，
+                        // 正确做法是给强调色加深，而不是把图标改回深色。
+                        color: '#ffffff',
+                    }}
+                    initial={false}
+                    animate={{ x: pillReady ? pillX : 0 }}
+                    transition={reducedTab
+                        ? { duration: 0 }
+                        : { type: 'spring', stiffness: 420, damping: 34, mass: 0.9 }}
+                    aria-hidden
+                >
+                    {/* key 跟随选中项：切页时换一枚新实例，生长动画才会重播。 */}
+                    <NeteaseTabGlyph key={activeGlyph} glyph={activeGlyph} />
+                </motion.div>
+
+                {tabs.map((tab, index) => {
+                    const active = tab.id === activeId;
+                    return (
+                        <button
+                            key={tab.id}
+                            type="button"
+                            ref={node => { tabRefs.current[index] = node; }}
+                            onClick={() => onChange(tab.id)}
+                            aria-current={active ? 'page' : undefined}
+                            className="relative flex flex-1 flex-col items-center justify-center"
+                        >
+                            {/* 选中项的内容整体让位给圆球：淡出而不是 display:none，
+                                这样切换时没有布局跳动，圆球滑过去的过程本来就是内容交接。 */}
+                            <span
+                                className="flex flex-col items-center justify-center gap-0.5 transition-opacity"
+                                style={{
+                                    opacity: active ? 0 : 1,
+                                    color: 'var(--nt-text-muted)',
+                                    transitionDuration: reducedTab ? '0s' : '0.15s',
+                                }}
+                            >
+                                {tab.icon}
+                                {/* 原来 text-[10px] leading-none：行高等于字号，汉字/假名有裁切风险。 */}
+                                <span className="nt-t-label">{tab.label}</span>
+                            </span>
+                        </button>
+                    );
+                })}
+            </nav>
+        </div>
+    );
+};
 
 /** 顶部标题栏：左侧标题、右侧可选操作。滚动时会加深底色，模仿原生导航栏。 */
 export const NeteaseHeader: React.FC<{

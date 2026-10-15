@@ -10,6 +10,7 @@ import { useSafeInsets, bottomBarPadding } from './useSafeInsets';
 import { useNeteaseIsPlaying, useNeteaseProgress } from './useNeteasePlayback';
 import { useReducedMotionFor } from '../../../hooks/useReducedMotionFor';
 import { NeteasePageSlide } from './neteaseLayerTransition';
+import type { NeteaseTabGlyphId } from './neteaseTabGlyphs';
 
 // entry.ts 不能静态 import 推移模块（registry 是 eager glob 扫所有 entry 的），
 // 由本模块把本套的转场声明转出去，四个 lazy loader 在 resolve 时灌进 manifest 的空壳。
@@ -516,13 +517,15 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
         </>
     );
 
-    // 顺序同网易云：推荐在第一屏，「我的」在最后一屏
-    const tabs: readonly { id: string; label: string; icon: React.ReactNode }[] = [
-        { id: 'discover', label: TAB_LABELS.discover, icon: <Compass size={19} /> },
-        { id: 'local', label: TAB_LABELS.local, icon: <HardDrive size={18} /> },
-        { id: 'albums', label: TAB_LABELS.albums, icon: <LibraryIcon size={18} /> },
-        { id: 'navidrome', label: TAB_LABELS.navidrome, icon: <Server size={18} /> },
-        { id: 'mine', label: TAB_LABELS.mine, icon: <User size={18} /> },
+    // 顺序同网易云：推荐在第一屏，「我的」在最后一屏。
+    // glyph 是选中态圆球里那枚**白色实心**字形的 id（未选中态仍用上面的 lucide 描边图标），
+    // 两套字形形状一一对应，只是画法不同 —— 见 neteaseTabGlyphs 的说明。
+    const tabs: readonly { id: string; label: string; icon: React.ReactNode; glyph: NeteaseTabGlyphId }[] = [
+        { id: 'discover', label: TAB_LABELS.discover, icon: <Compass size={19} />, glyph: 'compass' },
+        { id: 'local', label: TAB_LABELS.local, icon: <HardDrive size={18} />, glyph: 'local' },
+        { id: 'albums', label: TAB_LABELS.albums, icon: <LibraryIcon size={18} />, glyph: 'albums' },
+        { id: 'navidrome', label: TAB_LABELS.navidrome, icon: <Server size={18} />, glyph: 'remote' },
+        { id: 'mine', label: TAB_LABELS.mine, icon: <User size={18} />, glyph: 'mine' },
     ];
 
     /** 当前标签页的内容。抽出来是为了让推移组件只按 tab id 换页，不关心每页长什么样。 */

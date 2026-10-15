@@ -118,8 +118,9 @@ export type AppOverlaysDeps = {
     /** 当前页面 + 显示模式允许卡片在场（歌词页总是，首页看设置）；App 里算好的单一来源 */
     stageTrackPillOnScreen: boolean;
     /**
-     * 当前 suite 的**首页**自带底部播放条（netease），这一屏不挂宿主浮条。
-     * App.tsx 算好：要在 currentView 与浏览深度上一起判断（见 librarySuiteOwnsHomePlayerBar）。
+     * 当前 suite 自带底部播放条（netease），这一屏不挂宿主浮条。
+     * App.tsx 算好：只在 currentView 上判断，不再看浏览深度 —— 整个 netease suite 都不挂
+     * （见 librarySuiteOwnsHomePlayerBar 的注释：详情页上的浮条会压住列表最后两行）。
      */
     suiteOwnsHomePlayerBar: boolean;
     /** 点卡片时展开右侧面板的歌曲卡片（切到 cover 页并打开） */

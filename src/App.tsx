@@ -116,7 +116,6 @@ import { useThemeController } from './hooks/useThemeController';
 import { useOnlineSongMetadataHydration } from './hooks/useOnlineSongMetadataHydration';
 import { resolveCommandPaletteSearchSource, resolveSearchSource, useSearchNavigationStore } from './stores/useSearchNavigationStore';
 import { useOnlineProviderAccountStore } from './stores/useOnlineProviderAccountStore';
-import { useCollectionNavigationStore } from './stores/useCollectionNavigationStore';
 import { useShallow } from 'zustand/react/shallow';
 import { clampMediaVolume, toSafeRemoteUrl } from './utils/appPlaybackHelpers';
 import { getOnlineProviderIdForSong, getPlaybackSongKey, isLocalPlaybackSong, isNavidromePlaybackSong, isStagePlaybackSong } from './utils/appPlaybackGuards';
@@ -1250,17 +1249,20 @@ export default function App() {
      */
     const activeLibrarySuiteId = useActiveLibrarySuiteId();
     /**
-     * 首页 surface 自带底部播放条（netease），这一屏不挂宿主的胶囊浮条。
+     * 当前 suite 自带底部播放条（netease），整个 suite 都不挂宿主浮条。
      *
      * 浮条原来只有一个门槛 —— 有当前歌曲就渲染。grid / bravais 把胶囊当设计的一部分，不冲突；
-     * netease 首页自带迷你播放条 + 标签栏，两条会叠在同一处（实测胶囊 y=721..753 压住标签栏 725..778）。
+     * netease 自带迷你播放条 + 标签栏，两条会叠在同一处（实测胶囊 y=721..753 压住标签栏 725..778）。
      *
-     * 浏览深度要一起看：歌单 / 歌手详情页虽然也在 currentView==='home' 下，但那几个 surface
-     * 没有迷你播放条，那几屏上宿主浮条仍是唯一的播放入口。
+     * ⛔ 这里**不再看浏览深度**。原本歌单 / 歌手详情页（collectionBrowseDepth > 0）仍挂浮条，
+     * 理由是那几个 surface 没有迷你播放条、浮条是唯一播放入口 —— 但那个前提是错的：
+     * 实测宿主胶囊占 y=713..762（高 49），歌单滚动区 96..794 且 paddingBottom 为 0，
+     * 第 7、8 行被整条压住读不了，而那正是要看歌单名的最后两行。
+     * 用户拍板（2026-10-15）：**详情页也不显示浮条**，用列表可读性换掉那一个切歌入口。
+     *
+     * 变量名 `suiteOwnsHomePlayerBar` 沿用旧称，实际范围比名字大（见 librarySuiteChoice.ts 同名函数注释）。
      */
-    const collectionBrowseDepth = useCollectionNavigationStore(state => state.snapshot?.stack.length ?? 0);
     const suiteOwnsHomePlayerBar = currentView === 'home'
-        && collectionBrowseDepth === 0
         && librarySuiteOwnsHomePlayerBar(activeLibrarySuiteId);
     const stageTrackPillOnScreen = shouldShowNowPlayingToast({
         mode: stageTrackPillMode,
