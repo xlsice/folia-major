@@ -21,6 +21,69 @@
   src: url('https://cdn.jsdmirror.cn/npm/@fontsource/noto-serif-sc@5.2.9/files/noto-serif-sc-chinese-simplified-500-normal.woff2') format('woff2');
 }
 
+/* Folia Noto Sans SC —— 安卓端 netease suite 的中文/西文无衬线族。
+ *
+ * 为什么必须自带 webfont（2026-10-15 一加 Ace 3 / Android 16 实测）：
+ * 这套 UI 原来**没有**自己的字体，声明的是 `-apple-system, Roboto, …, sans-serif` 栈，
+ * 但真机渲染出来是**宋体**（横细竖粗 + 三角衬线末端，逐字放大确认）。
+ * 排查结果：全站 0 个元素引用衬线、`settings get system font_name = null`（设备没改系统字体），
+ * 说明问题不是「配错了字体」，而是**根本没锁字体**——整副栈里没有一个带 CJK 字形的字体，
+ * 全部落到设备对 `sans-serif` 的通用回退，而这台机器把它解析成了 Noto Serif CJK。
+ * 后果是换台设备、换一次系统设置，界面长相就变。
+ *
+ * **为什么放本地而不是 CDN**（实测结论，别改回去）：
+ * 先按原样走 `cdn.jsdmirror.cn`，四个 CJK 字重在 APK 的 WebView 里**全部加载失败**
+ * （`document.fonts` 报 status=error，`Network.loadingFailed` 报 net::ERR_FAILED）。
+ * 逐层排除后的结论：
+ *   - 不是没网 —— 设备 shell 里 curl 同一 URL 返回 200 / 1,142,552 B；
+ *   - 不是 CORS —— 响应带 `access-control-allow-origin: *`，httpbin 等跨域请求也正常；
+ *   - 不是体积上限 —— 13 KB 的 latin 子集能成功，同一 CDN 的 package.json 也能成功；
+ *   - 差别在传输方式：大文件走 **chunked**（无 Content-Length），小文件带 Content-Length，
+ *     这台 WebView 对前者直接拒（失败耗时 12 ms，是即时拒绝不是超时）。
+ * 同一份内容随包内置后从 `https://localhost` 同源加载，问题整类消失。
+ *
+ * 附带好处：断网可用。对一个能后台播放的音乐应用来说，字体不该依赖网络。
+ * 代价是 dist 多 4.47 MB（CJK 4.42 MB + latin 52 KB），APK 同量增大。
+ *
+ * **不要动上面的 Folia Noto Serif SC**：它服务桌面端和歌词可视化，
+ * 安卓端 suite 通过 CSS 变量 --nt-font 单独取用（见 neteaseTheme.ts）。
+ */
+@font-face {
+  font-family: 'Folia Noto Sans SC';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/noto-sans-sc-chinese-simplified-400-normal.woff2') format('woff2'),
+       url('/fonts/noto-sans-sc-latin-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Folia Noto Sans SC';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/noto-sans-sc-chinese-simplified-500-normal.woff2') format('woff2'),
+       url('/fonts/noto-sans-sc-latin-500-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Folia Noto Sans SC';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/noto-sans-sc-chinese-simplified-600-normal.woff2') format('woff2'),
+       url('/fonts/noto-sans-sc-latin-600-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Folia Noto Sans SC';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/noto-sans-sc-chinese-simplified-700-normal.woff2') format('woff2'),
+       url('/fonts/noto-sans-sc-latin-700-normal.woff2') format('woff2');
+}
+
 /* Custom Global Styles */
 body {
   background-color: #09090b;

@@ -12,3 +12,7 @@
 # Signed mods and fixtures: the signature covers exact bytes, so no line-ending conversion.
 mods/** -text
 test/fixtures/folium-signature/** -text
+
+# Webfont：显式按二进制处理。`* text=auto` 虽然能靠 Git 的自动探测识别二进制，
+# 但字体是本次新增的大文件（4.4 MB），显式写死可以避免任何环节误判成文本做行尾转换。
+*.woff2 -text

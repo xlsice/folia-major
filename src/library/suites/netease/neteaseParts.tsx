@@ -6,7 +6,7 @@ import React from 'react';
 
 import { useState } from 'react';
 import { ChevronDown, Disc3, ListMusic, MoreHorizontal, Pause, Play, Search, X } from 'lucide-react';
-import { paletteToCssVars, placeholderTint, type NeteasePalette } from './neteaseTheme';
+import { paletteToCssVars, placeholderTint, isAndroidShell, type NeteasePalette } from './neteaseTheme';
 import { useSafeInsets } from './useSafeInsets';
 
 /**
@@ -442,6 +442,12 @@ export const NeteaseShell: React.FC<{
             style={{
                 background: 'var(--nt-bg)',
                 color: 'var(--nt-text)',
+                // 安卓端专属的自带无衬线族（--nt-font 定义见 neteaseTheme.ts）。
+                // 2026-10-15 真机实测：安卓端原本没锁字体，整套 UI 跟着设备的 sans-serif
+                // 通用回退走，在一加 Ace 3 上被解析成宋体（横细竖粗 + 三角衬线末端）。
+                // 挂在最外层这一处，四个 surface 一次全生效。
+                // **只在安卓端挂**：桌面端的 netease suite 观感保持原样，不跟着变。
+                fontFamily: isAndroidShell() ? 'var(--nt-font)' : undefined,
                 // 状态栏避让。immersive 全屏（insetsHandling: 'disable'）下内容会铺到状态栏底下，
                 // 而本套件所有页面顶部都是「52px 标题栏顶到 y=0」的写法，没有一处留状态栏高度 ——
                 // 真机实测（2026-10-15 一加 Ace 3 / PJE110）header top:0、标题 h1 top:14~38，

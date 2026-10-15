@@ -111,9 +111,43 @@ export const buildNeteasePalette = (theme: Theme, isDaylight: boolean): NeteaseP
     };
 };
 
-/** 铺一层 CSS 变量到 style 上（挂在 suite 的最外层容器）。 */
+/**
+ * 是不是安卓壳内运行。
+ *
+ * 沿用本仓库既有的「两道闸」写法（见 utils/nativeMediaSession.ts 与
+ * navigation/back/nativeBackBridge.ts）：构建期 VITE_ANDROID_BUILD 标过，
+ * 运行期再问 Capacitor。少任何一道都会出问题——只有运行期判定时，网页版
+ * 浏览器里访问也会被当成安卓。
+ *
+ * 只用来决定**要不要给 suite 挂 --nt-font**：这次的重设计针对安卓端，
+ * 桌面端的 netease suite 观感必须保持不变。
+ */
+export const isAndroidShell = (): boolean => {
+    const env = import.meta.env as Record<string, unknown> | undefined;
+    if (!env?.VITE_ANDROID_BUILD) return false;
+    try {
+        const cap = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+        return cap?.isNativePlatform?.() === true;
+    } catch {
+        return false;
+    }
+};
+
+/**
+ * 铺一层 CSS 变量到 style 上（挂在 suite 的最外层容器）。 */
 export const paletteToCssVars = (palette: NeteasePalette): React.CSSProperties =>
     ({
+        // 安卓端 suite 的字体栈。自带 webfont 优先（@font-face 见 src/index.css）。
+        //
+        // 兜底链里**必须显式写出带 CJK 字形的字体**（Noto Sans CJK SC / Noto Sans SC）。
+        // 原因是 2026-10-15 真机实测踩过的坑：原来只写 `… , sans-serif`，而整副栈里
+        // 没有一个字体带中文——Roboto 有但无 CJK 字形，中文全部落到设备对 `sans-serif`
+        // 的通用回退，那台一加 Ace 3 把它解析成了 Noto Serif CJK，整屏变宋体。
+        // 显式点名之后，即使 webfont 加载失败（断网 / CDN 不可达），也不会再退到衬线。
+        //
+        // 注意：变量本身任何环境都定义，但**只有安卓端才真的用**（见 isAndroidShell 与
+        // NeteaseShell 里的 fontFamily 开关）。桌面端的 netease suite 保持原样不动。
+        '--nt-font': "'Folia Noto Sans SC', 'Noto Sans CJK SC', 'Noto Sans SC', Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
         '--nt-bg': palette.bg,
         '--nt-surface': palette.surface,
         '--nt-elevated': palette.elevated,
