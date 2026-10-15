@@ -540,6 +540,7 @@ mod 模式也不会被当成未知值。两者结构上可区分。
 | **安卓版音源走哪台机器（手机不连开发 PC）** | **`docs/dev/NETWORK.md`** |
 | 安卓壳 / 构建 / edge-to-edge | `docs/dev/ANDROID.md` |
 | 安卓界面重设计（方向 + 规格） | `docs/dev/ANDROID-REDESIGN.md`、`docs/dev/ANDROID-REDESIGN-SPEC.md` |
+| **APK 默认设置从哪来 / 怎么重新采集** | **`docs/dev/DEFAULT-SETTINGS.md`** |
 | ncm 与 natfrp 部署步骤 | `docs/dev/NCM-DEPLOY.md` |
 | 用户偏好 | `docs/dev/USER.md` |
 

@@ -8,6 +8,121 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-15-default-settings` — 把手机上那套设置固化成 APK 默认值（网易云 Cookie 除外）
+
+**性质**：功能。结论：达成，真机验证 50/50 回填。
+
+需求原话：「我希望我的手机上的这个软件的设置就是以后构建 APK 的默认设置（不包含网易云音乐 Cookie）」。
+
+#### 1. 先确认设置存在哪
+
+| 取证 | 结果 |
+| --- | --- |
+| `src/stores/storagePrimitives.ts` | 设置走 `localStorage.getItem/setItem`，**没有** Android 专用后端 |
+| `src/services/db.ts` | cache / session 走 IndexedDB（Dexie），与本需求无关，不碰 |
+| `src/services/onlineMusic/providerStorage.ts` | 凭证命名空间 `online_provider:<provider>:<key>` |
+| 真机 CDP 导出 | 57 个 key，origin `https://localhost` |
+
+即：**纯 localStorage，可以从 WebView 里原样捞出来**。这条决定了整个方案可行 ——
+不用 root、不用 `run-as`、不用改 App 加导出接口。
+
+#### 2. 机制：只补缺失，不覆盖已有
+
+```ts
+if (localStorage.getItem(key) !== null) continue;   // 已有值一律不碰
+localStorage.setItem(key, value);
+```
+
+| 场景 | 结果 |
+| --- | --- |
+| 全新安装（localStorage 空） | 50 项全部写入 → 拿到这套默认值 |
+| 已在用的机器升级 APK | 一个字节不动，用户自己的设置完整保留 |
+
+整份覆盖等于每次升级把用户设置打回出厂，所以这条规则不是偷懒，是需求本身。
+
+#### 3. 种子必须早于一切 store
+
+各 store 读设置是「读 localStorage，拿不到就用代码 fallback」。种子晚一步，
+先被读的那批 key 会先命中 fallback、吃掉默认值。
+
+所以 `src/config/applyDefaultSettings.ts` 是 `src/index.tsx` 的**第一个 import**
+（ESM 静态 import 求值顺序保证先于 `void import('./bootstrap')` 和所有 store 模块，
+也先于 `installConsoleLogCapture()` 读 `console_log_filters`）。
+
+⛔ 这个 import 不要往后面挪。已在源码里写了英文注释钉住。
+
+#### 4. 变更
+
+| 文件 | 角色 |
+| --- | --- |
+| `src/config/defaultSettings.generated.ts` | 50 项设置数据，**生成物，勿手改** |
+| `src/config/applyDefaultSettings.ts` | 落盘逻辑（只补 / 逐 key 容错 / 幂等） |
+| `docs/dev/make-default-settings.mjs` | dump → 剔除 → 生成，带落盘前的凭证安全闸 |
+| `docs/dev/DEFAULT-SETTINGS.md` | 机制、剔除规则、重新采集流程、排查表 |
+| `test/unit/config/applyDefaultSettings.test.ts` | 6 条回归 |
+| `src/index.tsx` | **唯一改动的上游文件**，加了 1 行 import |
+
+#### 5. 剔除 7 项
+
+**凭证 1 项**（用户明确要求排除）：
+
+| key | 说明 |
+| --- | --- |
+| `online_provider:netease:cookie` | 网易云登录会话（`MUSIC_U` / `MUSIC_A_T` / `MUSIC_R_T` …） |
+
+判定用正则匹配 key 名，覆盖命名空间式和历史遗留扁平式两种写法。
+生成器在落盘**前**还有一道闸：产物里只要还留着疑似凭证的 key 就中止不写。
+单测另有一条盯「值里不含网易云会话标识」，重新采集时规则失效会先被 CI 拦住。
+
+**瞬时状态 / 遥测 6 项**：`folia_local_music_last_row`、`folia_settings_last_section`、
+`last_app_view`、`wall_tools_queue_island_open`、`command_palette_frequency_v1`、
+`command_palette_recent_functional_v1`。
+
+⚠️ `last_app_view` 是**真机测出来的**，不是拍脑袋：它虽然和 `folia_settings_last_section`
+一样是「上次在哪」，但首轮回填验证里只有它被 App 启动后改写成了当前界面，
+放进默认值就是一份立刻被死的数据。反过来 `last_home_view_tab` 同样是「上次在哪」
+却不会被改写，说明它是被用户意图保留下来的偏好，所以留下。删掉后重跑一遍验证，
+漂移项从 1 个降到 0 个。
+
+#### 6. 真机验证（不是推断）
+
+装机后走了一遍「全新安装等价实验」：把 50 个默认 key 从 localStorage 全删掉
+（模拟从没装过的机器 —— 启动时这些 key 一个都不存在），重载后核对。
+**全程不删 Cookie。**
+
+| 项 | 结果 |
+| --- | --- |
+| 待验证 key | 50 |
+| 回填且与采集值一致 | **50/50** |
+| 未回填 | 0 |
+| 被 App 改写 | 0 |
+| 凭证 | `MUSIC_A_T=…` 未被触碰 |
+
+首轮跑出来是 50/51 一致 + 1 个漂移（即上面那个 `last_app_view`），
+据此同时改了剔除规则、重新生成、重打 APK、重装、复验。
+
+顺带确认：App 正常挂载在 `#root`，渲染出网易云套件的「音乐库 / 每日推荐 / 私人 FM」，
+`logcat` 无 `FATAL EXCEPTION`；设备上实际跑的 bundle hash 与本地 `dist/assets` 一致。
+
+#### 7. 凭证没泄漏的取证
+
+`dist/assets` 全量扫描：
+
+| 检索 | 结果 |
+| --- | --- |
+| `MUSIC_A_T=` | 0 命中 |
+| `online_provider:netease` | 0 命中 |
+| `MUSIC_U=` | 1 命中，**是误报** |
+
+那个 `MUSIC_U=` 是 `providerRegistry` 里的**模板字符串**
+`` `MUSIC_U=${wt(e.hasMusicU)}` ``，属于酷狗设备指纹，
+`vite-env.d.ts` 里 `hasMusicU: boolean` 已确认是布尔量，与登录会话无关。
+
+⚠️ 顺带记一条给以后：`minify` 后的单行文件用 `Select-String | ForEach Substring(0,80)`
+打印，会打印**行首**而不是命中位置，看起来像泄漏。判定泄漏要用脚本提取命中点上下文。
+
+---
+
 ### `dev-2026-10-14-android-back-button` — 修安卓返回键直接回桌面：加一层返回仲裁
 
 **性质**：BUG fix（安卓端功能缺失）。结论：达成，四层全部真机验证。
