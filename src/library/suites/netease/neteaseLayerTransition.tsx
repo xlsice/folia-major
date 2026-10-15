@@ -136,16 +136,19 @@ export const NeteasePageSlide: React.FC<{
     /** 「降低动态效果」对本套生效时为 true，直接换页不播。 */
     reduced: boolean;
     className?: string;
+    /** 真正滚动的是**内层**那个节点（外层还兼着裁切），滚动位置要挂到它上面。 */
+    innerRef?: React.Ref<HTMLDivElement>;
     children: React.ReactNode;
-}> = ({ slideKey, direction, reduced, className, children }) => {
+}> = ({ slideKey, direction, reduced, className, innerRef, children }) => {
     if (reduced) {
-        return <div className={className}>{children}</div>;
+        return <div ref={innerRef} className={className}>{children}</div>;
     }
     return (
         // custom 传给正在退场的那一页 —— 它的 props 是旧的，只有 AnimatePresence 上这份是新的。
         <AnimatePresence initial={false} custom={direction}>
             <motion.div
                 key={slideKey}
+                ref={innerRef}
                 className={className}
                 custom={direction}
                 initial="enter"

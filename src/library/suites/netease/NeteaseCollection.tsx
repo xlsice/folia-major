@@ -3,9 +3,11 @@ import { ChevronLeft, Download, ListPlus, Play, Share2 } from 'lucide-react';
 import { useSyncExternalStore } from 'react';
 import type { SongResult } from '../../../types';
 import type { LibraryCollectionSurfaceProps } from '../../core/contracts/suite';
+import { extractColors } from '../../../utils/colorExtractor';
 import { buildNeteasePalette, placeholderTint } from './neteaseTheme';
 import { useSafeInsets } from './useSafeInsets';
-import { NETEASE_HERO_ATTR, NETEASE_HERO_KEY_ATTR } from './neteaseMorph';
+import { NETEASE_HERO_ATTR, NETEASE_HERO_KEY_ATTR, getNeteaseMorphSnapshot, subscribeNeteaseMorph } from './neteaseMorph';
+import { getNeteaseCollectionScrollTop, setNeteaseCollectionScrollTop, useRestoredScrollTop } from './neteaseSession';
 import { useNeteaseCurrentKey, useNeteaseIsPlaying, useNeteaseScopePlaying } from './useNeteasePlayback';
 import { getPlaybackSongKey } from '../../../utils/appPlaybackGuards';
 import {
@@ -36,6 +38,33 @@ const useIsDaylight = (backgroundColor: string | undefined): boolean => React.us
     const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
     return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.5;
 }, [backgroundColor]);
+
+/** hex → "r, g, b"，拼 rgba() 用。 */
+const rgbTriplet = (hex: string): string => {
+    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex.trim());
+    return m ? `${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}` : '0, 0, 0';
+};
+
+/**
+ * 封面主色。取自 utils/colorExtractor（和歌词页 AI 主题取色同一套）。
+ *
+ * ⛔ 必须等图**解码完**再取：封面是跨域 CDN 图，没过 CORS 头时 canvas 会被污染、
+ * getImageData 直接抛错（colorExtractor 内部已经吞掉并返回空数组，这里再兜一层）。
+ * 取不到就用占位色，页面退化成原本的中性底，不能白屏。
+ */
+const useCoverTint = (coverUrl: string | null, fallbackSeed: string): string | null => {
+    const [tint, setTint] = React.useState<string | null>(null);
+    React.useEffect(() => {
+        setTint(null);
+        if (!coverUrl) return undefined;
+        let cancelled = false;
+        void extractColors(coverUrl, 1).then((colors) => {
+            if (!cancelled && colors[0]) setTint(colors[0]);
+        }).catch(() => { /* 取不到就用中性底，不打扰用户 */ });
+        return () => { cancelled = true; };
+    }, [coverUrl, fallbackSeed]);
+    return tint;
+};
 
 const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
     collection,
@@ -80,6 +109,17 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
     const title = detail?.name || collection.name;
     // 落点那张图优先用快照里的真实封面（更高清、与歌单一致），拿不到才退回描述符里那个。
     const heroCover = detail?.coverUrl || collection.coverUrl || null;
+
+    // 封面主色：把整页底色往歌单的调子上染，让下面的歌曲列表不像「贴上去的另一块」。
+    const coverTint = useCoverTint(heroCover, String(collection.id));
+
+    // 飞行途中把大图藏起来。不藏的话同屏有两份封面 —— 飞行的在动、这张满屏宽的纹丝不动。
+    const morphSnapshot = useSyncExternalStore(subscribeNeteaseMorph, getNeteaseMorphSnapshot, getNeteaseMorphSnapshot);
+    const heroHidden = morphSnapshot.flyingKey !== null && morphSnapshot.flyingKey === String(collection.id);
+
+    // 进歌词时宿主会整个卸载 Home 子树，回来时这一层是重挂的 —— 滚动位置要自己记住。
+    const scrollRef = React.useRef<HTMLDivElement>(null);
+    useRestoredScrollTop(scrollRef, String(collection.id), getNeteaseCollectionScrollTop, setNeteaseCollectionScrollTop);
 
     const headerActions = React.useMemo(() => {
         const entries: NeteaseMenuAction[] = [];
@@ -171,55 +211,91 @@ const NeteaseCollection: React.FC<LibraryCollectionSurfaceProps> = ({
 
     return (
         <NeteaseShell palette={palette} surface="collection">
-            {/* ── 顶部大图：满屏宽的正方形，顶到屏幕最上（盖住状态栏） ──
-                marginTop 的负值抵消 NeteaseShell 垫的 insets.top：那一层内边距是给常规顶栏用的，
-                而这张图要的是**出血到 y=0**（参考视频的落点就是屏幕顶）。绝对定位的子元素不受
-                padding 影响，所以返回栏不用写这层换算，写在这里一处就够。
+            {/* 返回栏浮在最上。**只有它常驻**，大图跟着内容一起滚走（用户 2026-10-15 明确要求）。
 
-                落点框量的是**这个盒子**（见 neteaseMorph.ts）。渐变故意做成它的**兄弟节点**而不是叠在它上面：
-                飞行的封面全程盖在这张图上（转场层的 z-index 200 > 集合层 110），落位那一刻两者像素级重合、
-                直接换掉即可 —— 要是把渐变叠在图里面，落位瞬间会突然多出一层渐变，看得见。 */}
-            <div className="relative shrink-0" style={{ marginTop: -insets.top }}>
-                <div
-                    className="w-full overflow-hidden rounded-xl"
-                    style={{ aspectRatio: '1 / 1', ...placeholderTint(String(collection.id), isDaylight) }}
-                    {...{ [NETEASE_HERO_ATTR]: 'true', [NETEASE_HERO_KEY_ATTR]: String(collection.id) }}
-                >
-                    {/* 封面 URL 取自集合描述符（不是异步快照里的 detail.coverUrl）：描述符里已经带着它，
-                        同一张图在首页卡片上已经解码过，这里立刻就能画，落位交换时不会露出占位底色。 */}
-                    {heroCover && <img src={heroCover} alt="" className="h-full w-full object-cover" />}
-                </div>
-                {/* 图与页面底色之间的过渡带。顶端全透明，与图无缝。 */}
-                <div
-                    className="pointer-events-none h-32 w-full"
-                    style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, var(--nt-bg) 82%)' }}
-                />
-            </div>
-
-            {/* 返回栏浮在大图上。底下一道压暗才保证白色图标在任何封面颜色上都读得清。 */}
+                ⛔ 必须是「外层管 padding / 内层管排布」两层，而且 **paddingTop 只能写在外层**：
+                Tailwind 的 `min-h-[56px]` 是 min-height，在 border-box 下**包含 padding** ——
+                写在同一个元素上，内容盒就只剩 44（按钮的高度），居中的余量被吃掉了，
+                三个点会比首页高 6px（真机量到首页 top=46 / 详情页 top=40）。
+                padding 挪到外层之后，内层是一行干净的 min-h-56 flex，与首页的 NeteaseHeader 完全一致。 */}
             <div
-                className="absolute inset-x-0 top-0 z-10 flex min-h-[56px] items-center gap-1 px-4"
+                className="absolute inset-x-0 top-0 z-20"
                 style={{
                     paddingTop: insets.top,
                     background: 'linear-gradient(to bottom, rgba(0,0,0,0.32) 0%, rgba(0,0,0,0) 100%)',
                 }}
             >
-                <button
-                    type="button"
-                    onClick={onBack}
-                    aria-label="返回"
-                    className="flex shrink-0 items-center justify-center rounded-full"
-                    style={{ width: 'var(--nt-touch-min)', height: 'var(--nt-touch-min)' }}
-                >
-                    <ChevronLeft size={22} color="#ffffff" />
-                </button>
-                <span className="flex-1" />
-                {headerActions.length > 0 && (
-                    <NeteaseMoreMenu label="歌单操作" actions={headerActions} />
-                )}
+                <div className="flex min-h-[56px] items-center gap-1 px-4">
+                    <button
+                        type="button"
+                        onClick={onBack}
+                        aria-label="返回"
+                        className="flex shrink-0 items-center justify-center rounded-full"
+                        style={{ width: 'var(--nt-touch-min)', height: 'var(--nt-touch-min)' }}
+                    >
+                        <ChevronLeft size={22} color="#ffffff" />
+                    </button>
+                    <span className="flex-1" />
+                    {headerActions.length > 0 && (
+                        <NeteaseMoreMenu label="歌单操作" actions={headerActions} />
+                    )}
+                </div>
             </div>
 
-            <div className="nt-scroll min-h-0 flex-1">
+            {/* 整页染色：封面主色从上往下淡出。取不到主色时这一层不出。
+
+                必须是 **NeteaseShell 的直属子节点**而不是滚动区的子节点 ——
+                放进 `nt-scroll` 里的话它会跟着内容一起滚走，就变成「只有第一屏有颜色」。
+                NeteaseShell 自己是 fixed inset-0，所以 absolute inset-0 就是整块可视区。 */}
+            {coverTint && (
+                <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 z-0"
+                    style={{
+                        background: `linear-gradient(to bottom, rgba(${rgbTriplet(coverTint)}, 0.20) 0%, rgba(${rgbTriplet(coverTint)}, 0.07) 34%, rgba(${rgbTriplet(coverTint)}, 0) 62%)`,
+                    }}
+                />
+            )}
+
+            {/* 滚动区。relative z-10 压在上面那层染色之上；大图在它**里面**，所以会跟着内容滚走。 */}
+            <div ref={scrollRef} className="nt-scroll relative z-10 min-h-0 flex-1">
+                {/* ── 顶部大图：满屏宽的正方形，顶到屏幕最上（盖住状态栏） ──
+                    marginTop 的负值抵消 NeteaseShell 垫的 insets.top：那一层内边距是给常规顶栏用的，
+                    而这张图要的是**出血到 y=0**（参考视频的落点就是屏幕顶）。
+
+                    ⛔ 飞行途中 opacity:0：不藏的话同屏会有两份封面 —— 飞行的那份从小到大在动，
+                    这张一挂上就是满屏宽、纹丝不动，看着就是「有一份停在原地」（真机截图就是这个症状）。
+                    落位那一刻两者像素级重合，直接换掉看不出破绽，所以藏到飞行结束即可。 */}
+                <div className="relative shrink-0" style={{ marginTop: -insets.top }}>
+                    <div
+                        className="w-full overflow-hidden rounded-xl"
+                        style={{
+                            aspectRatio: '1 / 1',
+                            opacity: heroHidden ? 0 : 1,
+                            ...placeholderTint(String(collection.id), isDaylight),
+                        }}
+                        {...{ [NETEASE_HERO_ATTR]: 'true', [NETEASE_HERO_KEY_ATTR]: String(collection.id) }}
+                    >
+                        {/* 封面 URL 取自集合描述符（不是异步快照里的 detail.coverUrl）：描述符里已经带着它，
+                            同一张图在首页卡片上已经解码过，这里立刻就能画，落位交换时不会露出占位底色。 */}
+                        {heroCover && <img src={heroCover} alt="" className="h-full w-full object-cover" />}
+                    </div>
+                </div>
+
+                {/* 图与页面底色之间的过渡带。**不是普通拉透明度**：色相取自封面主色，
+                    从图底那一点主色往下淡出，与上面那层整页染色接上。
+                    参考视频里歌单打开后整页都被封面主色浸染，歌曲列表不再是另一块突兀的灰白。 */}
+                <div
+                    className="pointer-events-none h-28 w-full"
+                    style={coverTint
+                        ? {
+                            marginTop: -56,
+                            paddingTop: 56,
+                            background: `linear-gradient(to bottom, rgba(${rgbTriplet(coverTint)}, 0) 0%, rgba(${rgbTriplet(coverTint)}, 0.26) 45%, rgba(${rgbTriplet(coverTint)}, 0) 100%)`,
+                        }
+                        : { background: 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, var(--nt-bg) 82%)' }}
+                />
+
                 {/* 标题 / 创作者 / 曲数：落在渐变带下方 */}
                 <div className="flex flex-col gap-1 px-4 pb-3 pt-1">
                     <h1 className="line-clamp-2 nt-t-display" style={{ color: 'var(--nt-text)' }}>

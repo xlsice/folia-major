@@ -29,13 +29,16 @@ export type NeteaseMorphRect = { left: number; top: number; width: number; heigh
  * 飞行时长与曲线。**转场层与层间淡入必须共用这两个值**（分别在 NeteaseCollectionMorph 与
  * neteaseLayerTransition 里用），差一点点就会出现「封面还在飞、底下的两层已经换完了」。
  *
- * 曲线 [0.25, 0.46, 0.45, 0.94]（easeOutQuad）是**照参考视频逐帧量出来的**，不是随手挑的：
- * 那一段里封面占屏宽 29% → 67% → 91% → 100%，换算成归一化进度是
- * 时刻 0.273 / 0.545 / 1.000 对应进度 0.535 / 0.879 / 1.000 —— 前半段冲得快、后半段明显收住。
- * 匀速会让整张封面像被匀速抽走，读起来很机械。
+ * 曲线换成 `[0.2, 0, 0, 1]`（Material 3 的 emphasized）：**有真正的慢起段**，起步先缓一下、
+ * 中段一把甩出去、末段长长地收住。
+ *
+ * ⛔ 上一版是 `[0.25, 0.46, 0.45, 0.94]`（easeOutQuad），它是照参考视频逐帧量出来的，
+ * 而且**确实生效**（真机实测轨迹与该 bezier 的平均误差 0.030，与线性是 0.205，贴前者 7 倍）。
+ * 但用户看了说「像匀速」—— 那条曲线一上来就是全速，减速全压在最后三成，肉眼读不出曲率。
+ * 所以这里换的不是「有没有曲线」，而是**曲线长什么样**：换成一眼能看出慢起—冲刺—收住的那种。
  */
-export const NETEASE_MORPH_DURATION = 0.55;
-export const NETEASE_MORPH_EASE: [number, number, number, number] = [0.25, 0.46, 0.45, 0.94];
+export const NETEASE_MORPH_DURATION = 0.48;
+export const NETEASE_MORPH_EASE: [number, number, number, number] = [0.2, 0, 0, 1];
 
 /** 圆角与卡片封面、大图完全一致 —— 落位那一刻两者像素级重合，交换才看不出来。 */
 export const NETEASE_MORPH_RADIUS = 12;
@@ -90,6 +93,8 @@ type MorphState = {
     fresh: boolean;
     /** 这一轮是「回去」而不是「进去」。beforeBack 一律置位，量不到大图也置位。 */
     closing: boolean;
+    /** 此刻正飞的是哪一个集合（大图那一侧要靠它把自己藏起来，落位再露出来）。 */
+    flyingKey: string | null;
     /** beforeBack 量好的返回腿（hero → card）。有值就说明该飞回去了。 */
     back: NeteaseMorphLeg | null;
     /** 记账版本号：转场层靠它决定「要不要为这一次变化起飞」。 */
@@ -97,7 +102,8 @@ type MorphState = {
 };
 
 const EMPTY: MorphState = {
-    key: null, cardRect: null, coverUrl: null, hasBooking: false, fresh: false, closing: false, back: null, revision: 0,
+    key: null, cardRect: null, coverUrl: null, hasBooking: false, fresh: false, closing: false,
+    flyingKey: null, back: null, revision: 0,
 };
 
 let state: MorphState = EMPTY;
@@ -131,12 +137,19 @@ export const armNeteaseMorphOpen = (target: EventTarget | null): boolean => {
     const node = target instanceof Element ? target : null;
     const card = node?.closest?.(`[${NETEASE_CARD_ATTR}]`) ?? null;
     if (!card) return false;
+    // ⛔ 从点击点到卡片之间若还夹着**别的可点元素**，这一下就不是「点卡片」——
+    // 卡面上那个「⋯」就是：它的 stopPropagation 挂在冒泡阶段，而本函数是**捕获**阶段跑的
+    // （捕获先于冒泡），所以拦不住。症状是点「⋯」会先播一段封面飞出，
+    // 动画结束又变回点之前的样子（菜单开了，但歌单没进去）。真机实测踩到。
+    for (let el: Element | null = node; el && el !== card; el = el.parentElement) {
+        if (el !== card && el.matches('button, a, [role="button"], input, select, textarea')) return false;
+    }
     const key = card.getAttribute(NETEASE_CARD_ATTR);
     const cover = card.querySelector(`[${NETEASE_CARD_COVER_ATTR}]`);
     const rect = readRect(cover);
     const coverUrl = cover?.querySelector('img')?.getAttribute('src') ?? null;
     if (!key || !rect || !coverUrl) return false;
-    commit({ key, cardRect: rect, coverUrl, hasBooking: true, fresh: true, closing: false, back: null });
+    commit({ key, cardRect: rect, coverUrl, hasBooking: true, fresh: true, closing: false, flyingKey: null, back: null });
     return true;
 };
 
@@ -207,8 +220,35 @@ export const takeNeteaseMorphBack = (): NeteaseMorphLeg | null => {
     return back;
 };
 
+/**
+ * 起飞时把「新鲜度」用掉。
+ *
+ * ⛔ 不清的话会**无限重飞**（真机实测：飞行层一直不消失）。
+ * `fresh` 的意思是「这一次点击刚写下的、还没起飞」，而落位时 `setNeteaseMorphFlying(null)`
+ * 会推进一次版本号 —— 渲染期的起飞判定看到「版本号变了 + 记账还在 + fresh 还是 true」，
+ * 就又起飞一次；再落位、再推进、再起飞……转场层自己把自己锁死在循环里。
+ *
+ * 只在起飞时清（不是落位时）：记账本身要留到 `beforeBack` 用，清掉的只是「能不能再起飞」。
+ */
+export const consumeNeteaseMorphFresh = (): void => {
+    if (!state.fresh) return;
+    commit({ ...state, fresh: false });
+};
+
+/**
+ * 飞行开始 / 结束，告诉详情页那张大图「你该藏起来 / 可以露面了」。
+ *
+ * ⛔ 不藏的话会同时看见**两份封面**：飞行的封面从小到大，而详情页那张大图一挂上就是满屏宽、
+ * 纹丝不动 —— 看起来就是「有一份停在原地」（真机截图里正是这个样子）。
+ * 大图必须等飞行落定再现身，那时两者像素级重合，直接换掉看不出破绽。
+ */
+export const setNeteaseMorphFlying = (key: string | null): void => {
+    if (state.flyingKey === key) return;
+    commit({ ...state, flyingKey: key });
+};
+
 /** 一次转场彻底结束（落位或放弃）后复位，让下一轮从干净状态开始。 */
 export const resetNeteaseMorph = (): void => {
-    if (!state.hasBooking && !state.back && !state.fresh && !state.closing) return;
+    if (!state.hasBooking && !state.back && !state.fresh && !state.closing && !state.flyingKey) return;
     commit(EMPTY);
 };

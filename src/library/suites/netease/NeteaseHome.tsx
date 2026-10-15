@@ -1,5 +1,6 @@
 import React from 'react';
 import { Compass, FolderOpen, ListMusic, Radio, RefreshCw, Plus, HardDrive, Library as LibraryIcon, Server, User } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { omni } from '../../../services/onlineMusic/omni';
 import { getSongCoverUrl } from '../../../services/onlineMusic/songMetadata';
 import type { SongResult } from '../../../types';
@@ -11,6 +12,17 @@ import { useNeteaseIsPlaying, useNeteaseProgress } from './useNeteasePlayback';
 import { useReducedMotionFor } from '../../../hooks/useReducedMotionFor';
 import { NeteasePageSlide } from './neteaseLayerTransition';
 import { NETEASE_CARD_ATTR, NETEASE_CARD_COVER_ATTR } from './neteaseMorph';
+import {
+    getNeteaseHomeScrollTop,
+    getNeteaseHomeTab,
+    hasFiredNeteaseTakeoff,
+    hasPlayedNeteaseEntrance,
+    markNeteaseEntrancePlayed,
+    scheduleNeteaseTakeoff,
+    setNeteaseHomeScrollTop,
+    setNeteaseHomeTab,
+    useRestoredScrollTop,
+} from './neteaseSession';
 import type { NeteaseTabGlyphId } from './neteaseTabGlyphs';
 
 // entry.ts 不能静态 import 推移模块（registry 是 eager glob 扫所有 entry 的），
@@ -62,6 +74,301 @@ const TAB_LABELS: Record<HomeTabId, string> = {
 /** 标签栏从左到右的顺序。推移方向由它算出来：点右边的标签往左翻，点左边的往右翻。 */
 const TAB_ORDER: readonly HomeTabId[] = ['discover', 'local', 'albums', 'navidrome', 'mine'];
 
+// ── 入场（用户 2026-10-15 提的「由外向内层层递进」）────────────────────────
+// 卡片初始在**屏幕边缘之外**，缩着、透明、带一点旋转，朝自己那一侧的屏幕外飞进来。
+// 离屏幕中心越远越晚起飞 —— 于是形成由外向内的波浪，而不是所有卡片一齐涌进来。
+//
+// 落位用带轻微过冲的曲线（easeOutBack），读起来是「差点刹不住、被拽回来一点」，
+// 和 iOS 解锁后图标弹入是同一类手感。
+/** 单张卡片的飞行时长。 */
+const CARD_FLY_DURATION = 0.62;
+/** 波浪的错峰总量：最外圈的卡片比最中心的晚这么久。0.33 + 0.62 ≈ 0.95s，和需求说的整体时长对上。 */
+const CARD_WAVE_STAGGER = 0.33;
+/** 起飞时缩到多少、歪多少度。 */
+const CARD_FLY_SCALE = 0.62;
+const CARD_FLY_ROTATE = 9;
+/** 位移／缩放用不同的曲线：位移收得干净，缩放才允许过冲。 */
+const CARD_FLY_EASE: [number, number, number, number] = [0.22, 0.68, 0.2, 1];
+/**
+ * 落位用经典的 easeOutBack（c1 = 1.70158 ⇒ y1 = 1.56）。
+ * 之前写的是 1.28，真机实测峰值只冲到 scale 1.010 —— 方向对、但肉眼等于没弹。
+ */
+const CARD_LAND_EASE: [number, number, number, number] = [0.34, 1.56, 0.64, 1];
+
+/** 顶栏与搜索框的下滑淡入（跟着入场一起，构成完整的页面入场）。 */
+const HEADER_FLY = { y: -14, opacity: 0 };
+const HEADER_LAND = { y: 0, opacity: 1 };
+const HEADER_TRANSITION = { duration: 0.46, ease: [0.2, 0, 0, 1] as [number, number, number, number] };
+
+/** 卡片按压：最大倾斜角、按下时缩到多少。 */
+const PRESS_TILT_DEG = 7;
+const PRESS_SCALE = 0.965;
+
+/** 一张卡的起飞位：起点偏移、起始旋转、以及它在波浪里的起飞延迟（秒）。 */
+type CardFly = { x: number; y: number; rotate: number; delay: number };
+
+/** 「本批卡片里离屏幕中心最远的那个有多远」的缓存。错峰按它归一，见 readFlyIn。 */
+type WaveRef = React.MutableRefObject<{ count: number; max: number }>;
+
+/**
+ * 量一张卡在**最终布局**里的位置。
+ *
+ * ⛔ 宽高要把入场的缩放除回去：framer 的 layout effect 挂在 motion 子树上，跑得比卡片自己的
+ * useLayoutEffect 早，挂载那一帧 scale(CARD_FLY_SCALE) 已经写在元素上了。
+ * 真机实测位移因此只有设计值的 0.62 倍（起点 translateX(-278.8)，设计值应是 -339），
+ * 卡片起点落在屏幕里而不是屏幕外。
+ *
+ * ⚠️ **中心偏移不要除**。scale() 绕 transform-origin（默认 50% 50%）作用，
+ * 元素自己的中心点在屏幕上原封不动，只有宽高被缩小了。
+ * 真机踩过：中心也除了一遍，距离凭空涨了 1.61 倍，于是「两屏之内」的参照筛选
+ * 把第 2、3 行误判成屏外，错峰塌成两级（实测只差 143ms，而不是设计的四层）。
+ */
+const measureCard = (el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    return {
+        width: r.width / CARD_FLY_SCALE,
+        height: r.height / CARD_FLY_SCALE,
+        cx: r.left + r.width / 2 - window.innerWidth / 2,
+        cy: r.top + r.height / 2 - window.innerHeight / 2,
+    };
+};
+
+/**
+ * 一张卡片的起飞位。
+ *
+ * 量的是**它自己在最终布局里的位置**（飞行动的是 transform，不动布局，所以量得到），
+ * 再换算成「从屏幕哪个方向外面进来」和「离中心多远 ⇒ 多晚起飞」。
+ *
+ * ⛔ 用屏幕中心而不是列表容器中心：卡片墙常常比一屏高，用容器中心的话
+ * 下面几屏的卡片会算出「在中心偏上」，飞入方向全朝上，看起来像集体往下钻。
+ */
+const readFlyIn = (el: HTMLElement, waveRef: WaveRef): CardFly => {
+    const halfW = window.innerWidth / 2, halfH = window.innerHeight / 2;
+    const m = measureCard(el);
+    const ax = Math.abs(m.cx / halfW), ay = Math.abs(m.cy / halfH);
+    // 离屏幕中心的归一距离（可以 > 1：屏幕底下的卡片本来就比半屏更远）。
+    const dist = Math.hypot(ax, ay);
+
+    // ⚠️ 错峰按**这一批卡里最远的那个**归一，不按屏幕四角。
+    // 真机实测（361×794、2 列共 35 张）：各卡的归一距离只落在 0.46…1.0 这一段，
+    // 按四角（1.0）归一的话波浪只吃掉预算的一半，35 张卡挤在 143ms 内齐飞。
+    //
+    // ⚠️⚠️ 参照只取「两屏之内」的卡。整墙有 35 张，最下面那张在 5 屏之下（距离 10.0），
+    // 按全场最大值归一的话，错峰预算全花在看不见的卡片上 —— 真机实测屏幕上
+    // 真正看得见的三行只分到 84ms 以内，等于没有波浪。
+    // 缓存按卡片数量失效：分批到达的网格会各自算自己的最远处。
+    const all = document.querySelectorAll<HTMLElement>('[data-nt-card]');
+    if (waveRef.current.count !== all.length) {
+        let far = 0;
+        for (const other of all) {
+            const o = measureCard(other);
+            if (Math.abs(o.cy) > halfH * 2) continue;
+            far = Math.max(far, Math.hypot(o.cx / halfW, o.cy / halfH));
+        }
+        waveRef.current = { count: all.length, max: far || 1 };
+    }
+
+    // ⛔ 方向按**离哪条边更近**来定，不能两个轴都给满：正中间偏上一点的那一排
+    // 会因为 cy 只有几个像素而从屏幕下方飞过来，看着像被从下面「顶」上来。
+    // 主导轴给满、另一轴只给 45%，于是角落的卡片斜着飞进来、贴边的卡片从自己那侧进来。
+    const fx = Math.sign(m.cx || 1) * (halfW + m.width);
+    const fy = Math.sign(m.cy || 1) * (halfH + m.height);
+    return {
+        x: ax >= ay ? fx : fx * 0.45,
+        y: ay >= ax ? fy : fy * 0.45,
+        rotate: Math.sign(m.cx || 1) * CARD_FLY_ROTATE,
+        delay: Math.min(1, dist / waveRef.current.max) * CARD_WAVE_STAGGER,
+    };
+};
+
+interface CollectionCardProps {
+    collection: ProviderCollection;
+    /** 这次会话要不要播页面入场。整页只播一次，见 neteaseSession。 */
+    enter: boolean;
+    motionEnabled: boolean;
+    isInteractive: boolean;
+    isDaylight: boolean;
+    waveRef: WaveRef;
+    cardActions: (collection: ProviderCollection) => React.ComponentProps<typeof NeteaseMoreMenu>['actions'];
+    openCollection: (collection: ProviderCollection) => void;
+}
+
+/**
+ * 歌单大卡：方图 + 名称 + 曲数，右上角常显的「⋯」。
+ *
+ * ⛔ **必须待在模块作用域**，不能定义在 NeteaseHome 的函数体里：
+ * 函数体里的组件每次父组件重渲染都会产生一个新的类型，React 按类型对账 ⇒ 整墙卡片被
+ * 卸载重挂。真机实测入场期间重挂了 5 代，表现为 scale「起飞 → 退回 0.62 → 再起飞」的锯齿。
+ */
+const CollectionCard: React.FC<CollectionCardProps> = ({
+    collection,
+    enter,
+    motionEnabled,
+    isInteractive,
+    isDaylight,
+    waveRef,
+    cardActions,
+    openCollection,
+}) => {
+    const cardRef = React.useRef<HTMLButtonElement>(null);
+    // 起飞位要**量**，量得到之前不能开始动画 —— 所以拆成两步：
+    //   第 1 步（useLayoutEffect，绘制前）：量出起点，卡片停在起点、opacity 0；
+    //   第 2 步（起飞时刻到了）：landed 翻 true，开始往终点飞。
+    // ⛔ 不能用 framer 的 initial 来表达起点：initial 只在挂载那一帧读一次，
+    // 而那一帧还没量到（真机实测：整屏卡片完全不动）。
+    // 也不能在量到之前先按终点渲染：会闪一下最终位置。
+    const [flyIn, setFlyIn] = React.useState<CardFly | null>(null);
+    // ⛔ 渲染期就要判断「这张是不是已经起飞过」：即使组件类型稳定了，切标签、
+    // 数据二次到达仍可能让整墙重挂，重挂时若还从「未落位」开始，入场会被重播一次。
+    const cardId = String(collection.id);
+    const [landed, setLanded] = React.useState(() => !enter || hasFiredNeteaseTakeoff(cardId));
+    const [press, setPress] = React.useState<{ rotateX: number; rotateY: number; ox: number; oy: number } | null>(null);
+    // 只量一次的缓存，见下面 effect 里的说明。
+    const measuredRef = React.useRef<CardFly | null>(null);
+
+    React.useLayoutEffect(() => {
+        if (!enter) return undefined;
+        const el = cardRef.current;
+        if (!el) return undefined;
+        // 只量一次。同一个组件实例里 StrictMode 会把 effect 跑两遍
+        // （bootstrap.tsx 里无条件开启，生产构建也跑），
+        // 第二遍再量的话元素上已经带着第一遍算出来的 translate/rotate ——
+        // 量到的是「已经挪到起点」的框，方向会翻到屏幕另一侧、距离也会拿满额延迟。
+        if (!measuredRef.current) measuredRef.current = readFlyIn(el, waveRef);
+        const fly = measuredRef.current;
+        setFlyIn(fly);
+
+        // 起飞时刻锚在模块级的表里（见 neteaseSession 的说明），同一个 id 只排一次。
+        const fireAt = scheduleNeteaseTakeoff(cardId, fly.delay);
+        const remaining = fireAt - performance.now();
+        if (remaining <= 0) { setLanded(true); return undefined; }
+
+        let raf = 0;
+        let timer = 0;
+        let cancelled = false;
+        // 隔一帧再起飞：这一帧要先让「起点」被提交上去，framer 才有 from 可插值。
+        //
+        // ⚠️ 错峰必须用**真实定时器**推进，不能写进 framer 的 delay。
+        // 真机实测：写不写 delay 效果完全一样，35 张卡在同一帧齐飞、可见数一帧从 4 跳到 35。
+        raf = requestAnimationFrame(() => {
+            if (cancelled) return;
+            timer = window.setTimeout(() => {
+                if (!cancelled) setLanded(true);
+            }, remaining);
+        });
+        return () => {
+            cancelled = true;
+            cancelAnimationFrame(raf);
+            clearTimeout(timer);
+        };
+    }, [enter, cardId, waveRef]);
+
+    // 按下时按点击位置相对卡片中心的偏移算倾斜。
+    // 变换原点放在**被点的那一角**上：这样「缩小」读起来就是那一角往里陷，
+    // 而不是整张卡朝屏幕中心缩。倾斜绕原点转，方向也跟着点的那一侧走。
+    const beginPress = (event: React.PointerEvent<HTMLButtonElement>) => {
+        if (!motionEnabled) return;
+        const el = cardRef.current;
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        const nx = Math.max(-1, Math.min(1, ((event.clientX - r.left) / r.width) * 2 - 1));
+        const ny = Math.max(-1, Math.min(1, ((event.clientY - r.top) / r.height) * 2 - 1));
+        setPress({
+            rotateX: -ny * PRESS_TILT_DEG,
+            rotateY: nx * PRESS_TILT_DEG,
+            ox: 50 + nx * 50,
+            oy: 50 + ny * 50,
+        });
+    };
+    const endPress = () => setPress(null);
+
+    // 起飞之后 framer 只负责插值，错峰已经在上面的定时器里做完了。
+    // 各属性的曲线不同，所以仍然是逐值写（顶层那一份会被忽略）。
+    const flyTransition = React.useMemo(() => ({
+        x: { duration: CARD_FLY_DURATION, ease: CARD_FLY_EASE },
+        y: { duration: CARD_FLY_DURATION, ease: CARD_FLY_EASE },
+        rotate: { duration: CARD_FLY_DURATION, ease: CARD_FLY_EASE },
+        // 缩放单独给一条带过冲的曲线：位移干净地停在原位，大小「刹不住」地弹一下。
+        scale: { duration: CARD_FLY_DURATION, ease: CARD_LAND_EASE },
+        opacity: { duration: CARD_FLY_DURATION * 0.42, ease: 'linear' as const },
+    }), []);
+
+    return (
+        <motion.button
+            ref={cardRef}
+            type="button"
+            disabled={!isInteractive}
+            onClick={() => openCollection(collection)}
+            // 入场与按压都只动 transform / opacity，不碰布局 —— 一屏几十张卡，
+            // 任何会触发布局的属性都会让这一段明显掉帧。
+            initial={false}
+            animate={enter && !landed
+                ? { x: flyIn?.x ?? 0, y: flyIn?.y ?? 0, scale: CARD_FLY_SCALE, rotate: flyIn?.rotate ?? 0, opacity: 0 }
+                : { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1 }}
+            transition={enter && landed ? flyTransition : { duration: 0 }}
+            onPointerDown={beginPress}
+            onPointerUp={endPress}
+            onPointerLeave={endPress}
+            onPointerCancel={endPress}
+            className="flex w-full flex-col gap-2 text-left"
+            style={{ perspective: motionEnabled ? 700 : undefined }}
+            {...{ [NETEASE_CARD_ATTR]: cardId }}
+        >
+            {/* 起飞框量的是**外层这个盒子**（见 neteaseMorph.ts 的契约说明），它**不带 transform**。
+                按压的 3D 倾斜必须放在里面的 motion 上：倾斜会改 getBoundingClientRect，
+                两者放同一层的话起飞框量到的是被按住的那一帧，封面会歪着飞出去。
+                属性值用集合 id：返回时靠它找回同一张卡。 */}
+            <div
+                className="relative aspect-square w-full overflow-hidden rounded-xl"
+                style={placeholderTint(cardId, isDaylight)}
+                {...{ [NETEASE_CARD_COVER_ATTR]: cardId }}
+            >
+                <motion.div
+                    className="absolute inset-0 overflow-hidden rounded-xl"
+                    style={{
+                        transform: press
+                            ? `rotateX(${press.rotateX}deg) rotateY(${press.rotateY}deg) scale(${PRESS_SCALE})`
+                            : 'rotateX(0deg) rotateY(0deg) scale(1)',
+                        transformOrigin: press ? `${press.ox}% ${press.oy}%` : '50% 50%',
+                        // 回弹：松手后 0.28s 回到原状。按下那一刻是瞬时的（要跟手）。
+                        transition: press ? 'none' : 'transform 280ms cubic-bezier(0.2, 0, 0, 1)',
+                    }}
+                >
+                    {collection.coverUrl && (
+                        <img
+                            src={collection.coverUrl}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            className="h-full w-full object-cover"
+                        />
+                    )}
+                    {/* 「⋯」盖在卡上但**常显**：这是上一轮 group-hover 隐身的高发区，手机上必须能点到 */}
+                    <span className="absolute right-1 top-1" onClick={event => event.stopPropagation()}>
+                        <NeteaseMoreMenu label="更多操作" actions={cardActions(collection)} />
+                    </span>
+                    {typeof collection.trackCount === 'number' && (
+                        <span
+                            className="absolute bottom-1.5 right-2 nt-t-caption"
+                            style={{ color: 'rgba(255,255,255,0.85)', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}
+                        >
+                            {collection.trackCount > 999 ? '999+' : collection.trackCount}
+                        </span>
+                    )}
+                </motion.div>
+            </div>
+            <span className="truncate nt-t-item" style={{ color: 'var(--nt-text)' }}>
+                {collection.name}
+            </span>
+            {typeof collection.trackCount === 'number' && (
+                <span className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
+                    {collection.trackCount} 首
+                </span>
+            )}
+        </motion.button>
+    );
+};
+
 const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
     declaredActions,
     account,
@@ -87,12 +394,36 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
     const insets = useSafeInsets();
     const barInset = bottomBarPadding(insets);
     const can = new Set(declaredActions.actions);
-    const [tab, setTab] = React.useState<HomeTabId>('discover');
+    // 标签存在模块级而不是 useState：进歌词时宿主会整个卸载 Home 子树，
+    // 普通组件状态会跟着没，回来就落在「推荐」上 —— 看着就是「回到首页重新加载」。
+    const [tab, setTabState] = React.useState<HomeTabId>(
+        () => (getNeteaseHomeTab() as HomeTabId) ?? 'discover',
+    );
+    const setTab = React.useCallback((next: HomeTabId) => {
+        setNeteaseHomeTab(next);
+        setTabState(next);
+    }, []);
+    const tabScrollRef = React.useRef<HTMLDivElement>(null);
+    useRestoredScrollTop(tabScrollRef, tab, getNeteaseHomeScrollTop, setNeteaseHomeScrollTop);
     // 推移方向。必须和 setTab 同一个渲染里落定，退场的那一页才知道该往哪边退。
     const [tabDirection, setTabDirection] = React.useState<1 | -1>(1);
     // 与集合层的整层推移共用同一个动效面（collectionMorph），用户关一次两边一起停。
     const reducedSlide = useReducedMotionFor('collectionMorph');
+    // 入场与按压走 uiMicroMotion 那个面：它们是界面微交互，不是集合层的形变。
+    const motionEnabled = !useReducedMotionFor('uiMicroMotion');
+    // 页面入场一个会话只播一次（见 neteaseSession 的说明）：切标签、从歌词回来都不重播。
+    //
+    // ⛔ 必须在**挂载那一刻**就把「播不播」定死，不能等卡片到了再决定：
+    // 首页先挂、数据后到（在线音源要拉推荐，真机上约 1s）。若用 state 在挂载时就翻成
+    // 「已播过」，等卡片渲染时入场信号早没了 —— 真机实测就是完全不动。
+    // 所以这里用惰性初值把决定冻住，真正落标记交给下面的 cardCount effect。
+    // ⛔ 必须和动效开关一起定：关掉 uiMicroMotion 的用户看到的是「整屏卡片卡在起点、
+    // 透明度 0」，因为入场的起点本来就是 opacity 0。
+    const [entranceOn] = React.useState(() => motionEnabled && !hasPlayedNeteaseEntrance());
     const [query, setQuery] = React.useState('');
+    // 同一批卡里「离屏幕中心最远的那个有多远」。见 readFlyIn：按屏幕四角归一会把波浪压掉一半。
+    // 用可变对象而不是 state：卡片要在自己的 layout effect 里读它，那一刻父组件还没跑完 effect。
+    const waveRef = React.useRef({ count: -1, max: 1 });
 
     /** 切标签页并记下方向。同一个 tab 不重播动画。 */
     const selectTab = (next: HomeTabId) => {
@@ -179,55 +510,6 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
         }
         return entries;
     };
-
-    /** 歌单大卡：方图 + 名称 + 曲数，右上角常显的「⋯」。 */
-    const CollectionCard: React.FC<{ collection: ProviderCollection }> = ({ collection }) => (
-        <button
-            type="button"
-            disabled={!isInteractive}
-            onClick={() => openCollection(collection)}
-            className="flex w-full flex-col gap-2 text-left"
-            {...{ [NETEASE_CARD_ATTR]: String(collection.id) }}
-        >
-            {/* 起飞框量的是**这张封面**，不是整张卡（见 neteaseMorph.ts 的契约说明）。
-                属性值用集合 id：返回时靠它找回同一张卡。 */}
-            <div
-                className="relative aspect-square w-full overflow-hidden rounded-xl"
-                style={placeholderTint(String(collection.id), isDaylight)}
-                {...{ [NETEASE_CARD_COVER_ATTR]: String(collection.id) }}
-            >
-                {collection.coverUrl && (
-                    <img
-                        src={collection.coverUrl}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        className="h-full w-full object-cover"
-                    />
-                )}
-                {/* 「⋯」盖在卡上但**常显**：这是上一轮 group-hover 隐身的高发区，手机上必须能点到 */}
-                <span className="absolute right-1 top-1" onClick={event => event.stopPropagation()}>
-                    <NeteaseMoreMenu label="更多操作" actions={cardActions(collection)} />
-                </span>
-                {typeof collection.trackCount === 'number' && (
-                    <span
-                        className="absolute bottom-1.5 right-2 nt-t-caption"
-                        style={{ color: 'rgba(255,255,255,0.85)', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}
-                    >
-                        {collection.trackCount > 999 ? '999+' : collection.trackCount}
-                    </span>
-                )}
-            </div>
-            <span className="truncate nt-t-item" style={{ color: 'var(--nt-text)' }}>
-                {collection.name}
-            </span>
-            {typeof collection.trackCount === 'number' && (
-                <span className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }}>
-                    {collection.trackCount} 首
-                </span>
-            )}
-        </button>
-    );
 
     /**
      * 「推荐」页的数据。
@@ -376,7 +658,17 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                 {hasFeed ? (
                     <div className="grid grid-cols-2 gap-x-3 gap-y-4 px-4 sm:grid-cols-3">
                         {recommended.map(collection => (
-                            <CollectionCard key={String(collection.id)} collection={collection} />
+                            <CollectionCard
+                                key={String(collection.id)}
+                                collection={collection}
+                                enter={entranceOn}
+                                motionEnabled={motionEnabled}
+                                isInteractive={isInteractive}
+                                isDaylight={isDaylight}
+                                waveRef={waveRef}
+                                cardActions={cardActions}
+                                openCollection={openCollection}
+                            />
                         ))}
                     </div>
                 ) : feedStatus === 'ready' ? (
@@ -428,7 +720,17 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                 <NeteaseSectionTitle count={onlineCollections.length}>我创建的歌单</NeteaseSectionTitle>
                 <div className="grid grid-cols-2 gap-x-3 gap-y-4 px-4 sm:grid-cols-3">
                     {onlineCollections.map(collection => (
-                        <CollectionCard key={String(collection.id)} collection={collection} />
+                        <CollectionCard
+                            key={String(collection.id)}
+                            collection={collection}
+                            enter={entranceOn}
+                            motionEnabled={motionEnabled}
+                            isInteractive={isInteractive}
+                            isDaylight={isDaylight}
+                            waveRef={waveRef}
+                            cardActions={cardActions}
+                            openCollection={openCollection}
+                        />
                     ))}
                 </div>
             </>
@@ -498,7 +800,17 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                     : (
                         <div className="grid grid-cols-2 gap-x-3 gap-y-4 px-4 sm:grid-cols-3">
                             {albums.map(collection => (
-                                <CollectionCard key={String(collection.id)} collection={collection} />
+                                <CollectionCard
+                                    key={String(collection.id)}
+                                    collection={collection}
+                                    enter={entranceOn}
+                                    motionEnabled={motionEnabled}
+                                    isInteractive={isInteractive}
+                                    isDaylight={isDaylight}
+                                    waveRef={waveRef}
+                                    cardActions={cardActions}
+                                    openCollection={openCollection}
+                                />
                             ))}
                         </div>
                     )}
@@ -536,9 +848,21 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
         { id: 'mine', label: TAB_LABELS.mine, icon: <User size={18} />, glyph: 'mine' },
     ];
 
+    /**
+     * 入场播过一次就把模块级标记落下来，**要等卡片真的渲染出来**才落。
+     * 放在挂载那一刻落的话，数据后到的卡片全都会拿到「已播过」而不再入场。
+     * effect 在整轮 render 之后才跑，所以同一批卡片读到的都还是 true。
+     */
+    React.useEffect(() => {
+        if (!entranceOn) return;
+        // 三个带卡片网格的标签页，推荐 / 我的 / 专辑。albums 是在 renderAlbumsTab 里现算的，
+        // 这里直接用 playlists.length 当它是否已就绪的信号，不重复算一遍过滤。
+        if (recommended.length + onlineCollections.length + playlists.length === 0) return;
+        markNeteaseEntrancePlayed();
+    }, [entranceOn, recommended.length, onlineCollections.length, playlists.length]);
+
     /** 当前标签页的内容。抽出来是为了让推移组件只按 tab id 换页，不关心每页长什么样。 */
-    const renderTabContent = (current: HomeTabId) => {
-        switch (current) {
+    const renderTabContent = (current: HomeTabId) => {        switch (current) {
             case 'discover': return renderDiscoverTab();
             case 'local': return renderLocalTab();
             case 'albums': return renderAlbumsTab();
@@ -549,19 +873,34 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
 
     return (
         <NeteaseShell palette={palette}>
-            <NeteaseHeader
-                title="音乐库"
-                trailing={(
-                    <NeteaseMoreMenu
-                        label="更多"
-                        actions={[
-                            { id: 'refresh', label: '刷新', onSelect: () => void onRefreshLocalSongs() },
-                            { id: 'account', label: '账户', onSelect: () => selectTab('mine') },
-                        ]}
-                    />
-                )}
-            />
-            <NeteaseSearchBar query={query} placeholder="搜索歌单" onQueryChange={applyQuery} />
+            {/* 顶栏与搜索框跟着页面入场一起「下滑淡入」。两段错开一点点，读起来是「先出标题、
+                再出搜索框」，和下面卡片的波浪合起来才是完整的一屏入场。
+                不播入场（已经播过 / 关了动效）时 initial={false}，也就是完全不动。 */}
+            <motion.div
+                initial={entranceOn ? HEADER_FLY : false}
+                animate={HEADER_LAND}
+                transition={HEADER_TRANSITION}
+            >
+                <NeteaseHeader
+                    title="音乐库"
+                    trailing={(
+                        <NeteaseMoreMenu
+                            label="更多"
+                            actions={[
+                                { id: 'refresh', label: '刷新', onSelect: () => void onRefreshLocalSongs() },
+                                { id: 'account', label: '账户', onSelect: () => selectTab('mine') },
+                            ]}
+                        />
+                    )}
+                />
+            </motion.div>
+            <motion.div
+                initial={entranceOn ? HEADER_FLY : false}
+                animate={HEADER_LAND}
+                transition={{ ...HEADER_TRANSITION, delay: 0.08 }}
+            >
+                <NeteaseSearchBar query={query} placeholder="搜索歌单" onQueryChange={applyQuery} />
+            </motion.div>
 
             {/* 两层：外层裁切（推移时不让翻出去的半页漏到界面上），内层才滚动。
                 推移期间新旧两页同时在 DOM 里（退场那页靠 AnimatePresence 留到动画结束），
@@ -572,6 +911,7 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                     direction={tabDirection}
                     reduced={reducedSlide}
                     className="nt-scroll absolute inset-0 pb-4"
+                    innerRef={tabScrollRef}
                 >
                     {renderTabContent(tab)}
                 </NeteasePageSlide>

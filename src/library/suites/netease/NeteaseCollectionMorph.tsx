@@ -7,10 +7,12 @@ import {
     NETEASE_MORPH_EASE,
     NETEASE_MORPH_RADIUS,
     armNeteaseMorphOpen,
+    consumeNeteaseMorphFresh,
     getNeteaseMorphOpen,
     getNeteaseMorphSnapshot,
     markNeteaseMorphNotOpen,
     resetNeteaseMorph,
+    setNeteaseMorphFlying,
     subscribeNeteaseMorph,
     takeNeteaseMorphBack,
     type NeteaseMorphLeg,
@@ -75,6 +77,8 @@ export const NeteaseCollectionMorph: React.FC<{ enabled: boolean }> = ({ enabled
     const flyingRef = React.useRef(false);
     /** 已经为哪个版本号做过起飞判定。保证一次记账变化只起飞一次。 */
     const consumedRevisionRef = React.useRef(-1);
+    /** 当前在飞的是哪个集合。只在渲染期写，由 effect 发给详情页。 */
+    const flyingKeyRef = React.useRef<string | null>(null);
 
     /**
      * 一段飞行结束（落位）。
@@ -90,6 +94,7 @@ export const NeteaseCollectionMorph: React.FC<{ enabled: boolean }> = ({ enabled
      */
     const settle = React.useCallback(() => {
         flyingRef.current = false;
+        flyingKeyRef.current = null;
         setFlight(null);
     }, []);
 
@@ -112,11 +117,33 @@ export const NeteaseCollectionMorph: React.FC<{ enabled: boolean }> = ({ enabled
         const leg = back ?? (snapshot.fresh && !snapshot.closing ? openLeg() : null);
         if (leg) {
             flyingRef.current = true;
+            // 只把 key 记进 ref，**不在这里通知**：渲染期改外部 store 会惊动 React。
+            // 通知交给下面那个 effect（起飞 / 落位各一次）。
+            flyingKeyRef.current = snapshot.key;
             // 渲染期 setState 是 React 认可的「由 props/state 推导出的 state」写法：
             // 同一次 commit 内就会再渲染一次并提交，不会多等一帧。
             setFlight({ leg, base: leg.from });
         }
     }
+
+    /**
+     * 起飞 / 落位时通知详情页藏起大图。
+     *
+     * ⛔ 不藏的话同屏会有**两份封面**：飞行的这份从小到大在动，详情页那张满屏宽的一挂上就
+     * 纹丝不动 —— 看着就是「有一份停在原地」。大图等飞行落定再现身，那时两者像素级重合，
+     * 直接换掉看不出破绽。
+     */
+    React.useEffect(() => {
+        if (!flight) return;
+        // 先把「新鲜度」用掉，再通知详情页藏起大图。两件事都只在这个 effect 里做，
+        // 因为在渲染期改 store 会惊动 React。
+        //
+        // ⛔ consumeNeteaseMorphFresh 不能省：落位时 setNeteaseMorphFlying(null) 会推进版本号，
+        // 而此时记账还在、fresh 若还是 true，渲染期的起飞判定就会**再起飞一次** ——
+        // 落位、再起飞、再落位，转场层把自己锁死在循环里（真机实测：飞行层一直不消失）。
+        consumeNeteaseMorphFresh();
+        setNeteaseMorphFlying(flyingKeyRef.current);
+    }, [flight]);
 
     // 看门狗：动画正常播完会走 onAnimationComplete，这一条只兜「被打断、回调不触发」的情况。
     React.useEffect(() => {
