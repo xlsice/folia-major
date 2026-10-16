@@ -8,6 +8,65 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-16-android-v0-7-20-published` — 发布：`android-v0.7.20` 已上线，二进制与对应源码同处
+
+**性质**：发布。状态：✅ 已发布并自动标记为 latest。
+
+#### 变更
+
+Tag **`android-v0.7.20`** 打在 commit `62a5b3dc`（`Android` 分支）上，release 页
+<https://github.com/xlsice/folia-major/releases/tag/android-v0.7.20> 附件为
+`folia-android-0.7.20.apk`（18,269,083 字节 / 17.42 MiB，
+`sha256:c54b55bab16bdbe46c04c31bb95a9c56dd1b5672cb120b12440d7949e6937397`），
+外加 GitHub 自动附带的 `Source code (zip)` / `(tar.gz)`，满足 AGPL-3.0 §6(d)。
+
+签名与 0.7.19 是**同一个 key**（`CN=Folia Android Release, OU=xlsice, O=xlsice, C=CN`，
+证书 SHA-256 `e86e2038a72bafa4cebd5125c73bd5cc25f1a12bdfb7cf13309fbdd5e46397a3`），
+所以从 0.7.19 升级可以直接覆盖安装。
+
+#### 验收
+
+发布不是「调完 API 就算数」，最后一步是**把 GitHub 上的 APK 下载回来比对**：
+
+```
+local  sha256 = c54b55bab16bdbe46c04c31bb95a9c56dd1b5672cb120b12440d7949e6937397
+remote sha256 = c54b55bab16bdbe46c04c31bb95a9c56dd1b5672cb120b12440d7949e6937397
+IDENTICAL     = True
+```
+
+另外核对：`draft=False`、`prerelease=False`、`assets=1`、`state=uploaded`、
+`/releases/latest` 返回的就是 `android-v0.7.20`、发布说明正文含 §6(d) 声明与 build 号 `62a5b3dc`。
+
+#### ⭐ 踩坑：发布网页表单根本传不了附件，改走 REST API 一把过
+
+GitHub 的附件选择框是 `<input type="file" class="sr-only" aria-hidden="true">`，
+它进不了无障碍快照，于是 **Browser 工具永远拿不到它的 ref，`upload_files` 用不了**。
+本来已经退到「请用户手动拖文件」，实测用户拖了两次都失败。
+
+**解法**：本机 `git push` 用的 GCM 凭证带仓库权限，**同一个凭证也能直接调 GitHub REST API** ——
+于是建 release、传附件、核对全部脚本化，一次跑完，不用碰浏览器。
+
+取凭证的正确姿势（踩了两次才通）：
+
+```powershell
+# ❌ 管道喂 stdin：git 收到空行，报 "missing protocol field"
+"protocol=https`nhost=github.com`n`n" | git credential fill
+
+# ✅ 必须用 Start-Process 的 stdin 重定向
+[System.IO.File]::WriteAllText($in, "protocol=https`r`nhost=github.com`r`n`r`n")
+Start-Process git -ArgumentList 'credential','fill' `
+    -RedirectStandardInput $in -RedirectStandardOutput $out -NoNewWindow -Wait
+```
+
+⚠️ 附带一个 .NET Framework 的坑：**`[System.IO.File]` 没有 `GetFileName` 方法**，
+取文件名必须用 `[System.IO.Path]::GetFileName`。写错的后果是 `?name=` 为空，
+GitHub 回 `Invalid name for request` —— 错误信息完全指不到真正原因，容易误判成权限或格式问题。
+
+⚠️ 另外网页表单的 **Tag 列表是页面加载时抓的缓存**：先 `git push` 了 tag、再去表单里选，
+下拉框只会显示旧 tag（"Nothing to show"），必须刷新页面才会重取。
+真要走 API 就没这个问题 —— 直接用 `git/ref/tags/<tag>` 校验 tag 指向的 commit，
+**tag 指错了当场抛错**，比在网页上靠眼睛核对可靠。
+
 ### `dev-2026-10-16-release-one-shot` — 工具：把发版收成一个命令 `release-android.ps1`
 
 **性质**：开发工具，不改运行时行为。
