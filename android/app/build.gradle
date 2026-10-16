@@ -1,5 +1,29 @@
 apply plugin: 'com.android.application'
 
+// 发布签名。
+//
+// 密钥与口令都是**秘密，不是对应源码**：AGPL-3.0 §6 只要求源码可被他人重建，不要求（也不应该）
+// 附带私钥。所以 android/keystore/ 与 android/keystore.properties 都进了 .gitignore，
+// 任何人 clone 下来都拿不到我们的签名材料 —— 这是对的。
+//
+// 代价是「拿到源码的人能构建，但装不上我们发布的那个包」。解法是这个 fallback：
+// 没有 keystore.properties 时 release 构建退回 debug key，产出照样可安装（只是签名不同，
+// 与线上包不能互相覆盖）。这样对应源码仍然是**完整可重建**的，这才是 §6 的实际要求。
+//
+// 自建签名：keytool -genkeypair -keystore android/keystore/folia-release.jks -alias folia \
+//            -keyalg RSA -keysize 2048 -validity 10950
+// 然后写 android/keystore.properties：
+//   storeFile=keystore/folia-release.jks
+//   storePassword=...
+//   keyAlias=folia
+//   keyPassword=...
+def keystorePropsFile = rootProject.file('keystore.properties')
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+def hasReleaseKeystore = keystoreProps.getProperty('storeFile') != null
+
 android {
     namespace = "top.izuna.foliamajor"
     // 本机 Android SDK 只安装了 android-36.1 平台，没有 android-36，
@@ -13,8 +37,10 @@ android {
         applicationId "top.izuna.foliamajor"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
+        // 首个对外发布。versionCode 之后只能递增（安卓据此判升级），
+        // 与 package.json 的 0.7.19 对齐，别再留着模板默认的 "1.0"。
         versionCode 1
-        versionName "1.0"
+        versionName "0.7.19"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -22,10 +48,22 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            release {
+                storeFile rootProject.file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // 有密钥就正式签名，没有就用 debug key —— 见文件头的说明。
+            signingConfig hasReleaseKeystore ? signingConfigs.release : signingConfigs.debug
         }
     }
 }

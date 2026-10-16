@@ -8,6 +8,52 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-16-android-release-signing` — 发布：给 release 构建补签名，并打通 §6(d) 的「同处提供源码」
+
+**性质**：构建 / 发布基础设施。状态：签名配置已接，release APK 待出包与上传。
+
+#### §6(d) 的完整链路核查
+
+AGPL-3.0 §6(d) 要求：把目标代码放在某个「指定位置」（免费或收费）提供，
+**并通过同一位置、同一方式免费提供等价的对应源码**。GitHub Release 页天然满足后半句 ——
+**给任意 tag 打 release，GitHub 自动生成 `Source code (zip)` / `(tar.gz)`**，且免费。
+
+前提是那个 tag 指向的 commit 里，**构建所需的脚本与配置都在**。逐项核过：
+
+| 项 | 状态 |
+| --- | --- |
+| `android/` 原生壳（56 个文件，含本 fork 的 `FoliaMediaSessionService` / `NativeMediaSessionPlugin` / `SafeInsetsPlugin` / `MainActivity`） | ✅ 已跟踪 |
+| `capacitor.config.ts` / `package-lock.json` / `vite.config.ts` | ✅ 已跟踪 |
+| `android/app/build.gradle` / `build.gradle` / `settings.gradle` / `gradle-wrapper.properties` | ✅ 已跟踪 |
+| 子模块 | ✅ 无（`git archive` 不会丢子模块内容） |
+| 最大的跟踪文件 | 3.5 MB（`img/visualizer.png`），远低于 GitHub 打包上限 |
+| 跟踪文件总数 | 3209 |
+| `.gitignore` 的 `scripts/*` 一条 | ✅ **空规则** —— 仓库里根本没有 `scripts/` 目录，没有构建脚本被排除掉 |
+| `models/` `build/ffmpeg/` `ffmpeg-audio/` | 构建时按脚本拉取并校验 sha256（`build/fetchModels.mjs`）；第三方预编译二进制本就不属于「对应源码」，**且取它们的脚本是入库的** |
+
+⚠️ **动手前发现的分发阻断**：`git ls-remote --heads origin` 当时只有 `main`，
+`Android` 分支（45 commit）没推 —— 等于发闭源二进制。已推送（`f0161e2a..b32d1b3d`）。
+
+#### 签名：为什么密钥必须排除、且排除后仍算合规
+
+`build.gradle` 原本**完全没有 `signingConfig`** —— `assembleRelease` 产出的是**装不上的未签名包**。
+补了配置，但要点不在「加了个签名」，而在**加了个 fallback**：
+
+```
+有 android/keystore.properties → 正式签名
+没有                        → 退回 debug key，产出照样可安装
+```
+
+因为**私钥是秘密，不是对应源码**。AGPL §6 要的是「源码可被他人重建」，不是「把私钥也公开」。
+如果硬要求密钥才能构建，那么 clone 下来的人反而构建不出任何东西 —— 那才是真的不满足 §6。
+现在任何人都能 `npm ci` + `cap sync` + `assembleRelease` 出一个可安装的包。
+
+`android/keystore/` 与 `android/keystore.properties` 已进 `android/.gitignore`
+（模板默认把 `*.jks` 那两行注释掉了，不主动加就会把密钥提交上去）。
+
+`versionName` 也从模板默认的 `"1.0"` 改成 `"0.7.19"` —— 与 `package.json` 对齐，
+别让人看到一个自称 1.0 实际是 0.7.19 的包。
+
 ### `dev-2026-10-16-agpl-section5b-notice` — 合规：把 AGPL-3.0 §5(b) 的显著声明做进 APK 里
 
 **性质**：合规（不是功能）。状态：真机验证通过 + 全量单测绿 + typecheck exit 0。

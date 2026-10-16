@@ -57,6 +57,11 @@ captures/
 #*.jks
 #*.keystore
 
+# 发布签名材料（见 app/build.gradle 头部说明）。AGPL-3.0 §6 要的是对应源码可被重建，
+# 私钥属于秘密、故意不随源码分发。缺了它们 release 构建会退回 debug key，仍可产出可安装的包。
+keystore/
+keystore.properties
+
 # External native build folder generated in Android Studio 2.2 and later
 .externalNativeBuild
 .cxx/
