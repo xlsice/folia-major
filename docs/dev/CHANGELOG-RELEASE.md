@@ -8,6 +8,47 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-16-release-one-shot` — 工具：把发版收成一个命令 `release-android.ps1`
+
+**性质**：开发工具，不改运行时行为。
+
+**为什么需要**：上一轮发 `android-v0.7.19` 时，整条链路（typecheck → 测试 → commit → push → 构建 → 验收）
+是手工串起来的，每一步都出过一次岔子，其中一次差点造成实质损失：
+
+**顺序是承重的**。`vite.config.ts` 在 vite 构建时执行 `git rev-parse --short HEAD`，
+这个值就是 APK 里 §5(b) 声明报的 build id。**先构建、后 commit**，二进制就会声称一个并不包含它的 commit，
+§6(d) 要求的「二进制 ↔ 对应源码可被任何人当场核对」当场失效。
+本轮就撞上了：修完三个 bug 后我先构建了 release，等写脚本时才 commit，
+于是必须再构建一次，才能让 tag 指向的 commit 与包里声明的 build id 严丝合缝。
+
+脚本 `docs/dev/release-android.ps1` 把这件事变成不可逆的顺序：
+
+```
+0 预检      分支必须是 Android（绝不允许推 main）+ origin 存在
+1 静态验证  npm run typecheck + npx vitest run test/unit/library
+2 提交      git add -A → 暂存区凭证扫描 → commit（凭证不过就中止）
+3 推送      git push origin Android，并回读 origin/Android 确认与本地一致
+4 构建      调 android-build.ps1 -Release（签名在 android/keystore，已 gitignore）
+5 产物验收  大小 / SHA-256 / apksigner 验签 + 解包 assets/*.js 查
+            §5(b) 三个声明标记 + **本次 commit 短 hash**
+6 收尾      打印待上传路径，并提醒 tag 必须指向该 commit
+```
+
+第 2 步的凭证扫描是**卡在 commit 之前**的，分两类：暂存**路径**里出现签名用的 keystore / 证书 / `.env`
+就直接中止；暂存**内容**里出现网易云游客态的 cookie 字段名、CSRF 字段、Bearer 令牌、私钥 PEM 头
+也直接中止。不留下「先提交再补救」的机会。
+
+⛔ 这段文档本身被这道扫描误报过一次：初版把扫描的字面量原样写进了流水，脚本立刻把自己的说明文档判成凭证。
+两处修法都留着：脚本里的字面量**由片段拼接而成**（否则它会匹配自己的源码），
+文档里则改为描述类别而不贴具体 token 名 —— 流水是给人读的，贴 token 名没有信息量。
+第 5 步的 commit 短 hash 检查同理 ——
+包里的 build id 对不上就 `Die`，不会产出一个看起来正常但溯源错误的包。
+
+⛔ 脚本本身**必须是纯 ASCII**：PowerShell 5.1 在没有 UTF-8 BOM 时按 ANSI 读 `.ps1`
+（与 `android-build.ps1` 同一条约束）。所以中文 commit message 走 `-MessageFile` 参数，
+由调用方写成**无 BOM 的 UTF-8**（用 `[System.IO.File]::WriteAllText` + `UTF8Encoding($false)`，
+不能用 PowerShell 5.1 的 `-Encoding UTF8`，那会带 BOM 并污染首行）。
+
 ### `dev-2026-10-16-toast-narrow-column-and-mine-login` — 修复：状态弹窗文字被压成窄条；给「我的」页补上登录 / 退出登录
 
 **性质**：BUG fix + 功能补齐。触发场景：`android-v0.7.19` 装到一台没登录过的新手机上实测。
