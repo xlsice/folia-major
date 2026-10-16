@@ -8,9 +8,47 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-16-android-v0-7-19-published` — 发布：`android-v0.7.19` 已上线，二进制与对应源码同处
+
+**性质**：发布。状态：✅ 已发布并标记为 latest。
+
+#### 变更
+
+在 `Android` 分支的 commit `1867b1b3` 上打了 tag **`android-v0.7.19`**，
+release 页 <https://github.com/xlsice/folia-major/releases/tag/android-v0.7.19> 同时放了三样东西：
+
+| 资源 | 说明 |
+| --- | --- |
+| `folia-android-0.7.19.apk` | 18,268,779 字节（GitHub 显示 17.42 MiB），SHA-256 `E1D9BE5F…21FB6BA` |
+| `Source code (zip)` | GitHub 自动生成 |
+| `Source code (tar.gz)` | GitHub 自动生成 |
+
+后两项就是 §6(d) 要求的「同一位置免费提供等价的对应源码」—— **与 APK 在同一页、同一方式、免费**。
+
+发布说明里写死了三件可当场核对的事：tag 对应的 commit `1867b1b3`（应用内「开源许可」一节显示同一个
+`__COMMIT_HASH__`）、证书指纹 `e86e2038…97a3`、APK 的 SHA-256。
+
+#### 验证
+
+- `apksigner verify --print-certs`：DN `CN=Folia Android Release, OU=xlsice, O=xlsice, C=CN`，
+  v2 签名（minSdk 24 已足够，v1/v3/v4 皆不需要）
+- 发布后 Assets 区显示 `sha256:e1d9be5ef0a70397813edd8749a20…`，与本地产物一致
+- `Source code` 两项时间戳早于 APK（tag 打在发布 commit 上，GitHub 按需生成）
+
+#### 踩坑
+
+- **GitHub 的资源上传框背后是 `<input type="file" id="releases-upload" class="sr-only" aria-hidden="true">`**，
+  `aria-hidden` 让它进不了无障碍快照，于是拿不到 opaque ref，而 `upload_files` 只认 ref ⇒ 只能人工拖。
+  同页另一个 file input（`fc-release_body`）是给正文插图的，别认错。
+- **在「New release」表单点 Publish，第一次提交只会落成一个 `untagged-<id>` 草稿并跳到 `releases/edit/untagged-…`**，
+  tag 要在**第二次**点 Publish 时才真正创建。要点两次，这不是 bug。
+- 发布按钮的标记是 `<button type="submit" publish-release="true">`，**没有 `name` 属性** ——
+  按 `button[name="publish"]` 选会落空。
+- 同一个 tag 只能建一次；重发必须新 tag（如 `android-v0.7.20`），覆盖不了已发布的资源。
+
 ### `dev-2026-10-16-android-release-signing` — 发布：给 release 构建补签名，并打通 §6(d) 的「同处提供源码」
 
-**性质**：构建 / 发布基础设施。状态：签名配置已接，release APK 待出包与上传。
+**性质**：构建 / 发布基础设施。状态：✅ 已随 `android-v0.7.19` 出包发布（见上一条）。
 
 #### §6(d) 的完整链路核查
 
