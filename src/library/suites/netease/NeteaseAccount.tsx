@@ -1,6 +1,8 @@
 import React from 'react';
 import { useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { AlertCircle, Check, LogOut, RotateCw } from 'lucide-react';
 import type { LibraryAccountSurfaceProps, LibraryLoginSessionSnapshot } from '../../core/contracts/account';
 import type { LibraryHomeMessage } from '../../core/contracts/homeModel';
@@ -11,10 +13,16 @@ import { NeteaseShell } from './neteaseParts';
 // entry.ts 不能静态 import 推移模块，由本模块把转场声明转出去。见 NeteaseHome 里的同一句说明。
 export { neteaseTransitions } from './neteaseLayerTransition';
 
-/** 契约的文案是 {key, values?, fallback?}，翻译层在这里收口；缺 key 时退回 fallback，再退回 key 本身。 */
-const say = (message: LibraryHomeMessage | null): string => {
+/**
+ * 契约的文案是 {key, values?, fallback?}，翻译层在这里收口：查 i18n，查不到才退回 fallback。
+ *
+ * ⛔ 必须真的走 t()：早先这里只 `return fallback || key`，而 core 给的这些文案多数**不带 fallback**，
+ * 于是语言包里明明有 `home.loginTitle`，登录弹窗却直接把 `home.loginTitle` 这个字符串显示给用户
+ * （2026-10-16 真机实测，标题 / 副标题 / 状态行三处全是裸 key）。
+ */
+const buildSay = (t: TFunction) => (message: LibraryHomeMessage | null): string => {
     if (!message) return '';
-    return message.fallback || message.key;
+    return t(message.key, { ...message.values, defaultValue: message.fallback || message.key });
 };
 
 /** 平台显示名：快照里的 provider 摘要优先，回退到 id。 */
@@ -117,7 +125,9 @@ const LoginCard: React.FC<{
     onRestartBackend: () => void;
     onDiagnostics: () => void;
 }> = ({ login, can, interactive, onSelectMethod, onRetry, onClose, onRestartBackend, onDiagnostics }) => {
-    // 阶段文案：直接从契约的 copy 拿（它已经是 i18n key，这里原样显示）
+    const { t } = useTranslation();
+    const say = React.useMemo(() => buildSay(t), [t]);
+    // 阶段文案：直接从契约的 copy 拿（它已经是 i18n key，这里翻译后显示）
     const statusText = say(login.copy.status);
     const backendDown = login.backend.failed;
     const cooldown = login.retryCooldownSeconds ?? 0;
@@ -142,7 +152,7 @@ const LoginCard: React.FC<{
                             className="mb-2 w-full rounded-lg py-3 nt-t-item"
                             style={{ background: 'var(--nt-hover)', color: 'var(--nt-text)' }}
                         >
-                            {method.labelKey}
+                            {t(method.labelKey)}
                         </button>
                     ))}
                 </div>

@@ -8,6 +8,113 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-16-toast-narrow-column-and-mine-login` — 修复：状态弹窗文字被压成窄条；给「我的」页补上登录 / 退出登录
+
+**性质**：BUG fix + 功能补齐。触发场景：`android-v0.7.19` 装到一台没登录过的新手机上实测。
+
+#### 变更
+
+**① 状态弹窗的文字窄列（`src/components/app/dialogs/AppDialogs.tsx`）**
+
+真机现象：播放失败弹窗「当前账号仅可试听此歌曲，请登录具有完整播放权限的账号」被排成
+**每行 2–3 个字**的竖窄条，整块背景因为 `rounded-full` 渲染成一个圆，文字溢出到圆外。
+
+根因不是排版审美，是一条 CSS 约束：
+
+| 环节 | 发生了什么 |
+| --- | --- |
+| `fixed` + `left-1/2` | 绝对定位元素只设 `left` 时，**可用宽度 = 视口宽 − left = 半屏**（1264px 的手机上只有 632px） |
+| 内容宽度 | 28 个 CJK 字 ≈ 392px + 图标 18 + 两个按钮 + 三段 gap 36 + 内边距 48 ≈ **604px**，刚好挤爆那 632px |
+| flex 收缩 | `<span>` 是 flex item，而**中文的 `min-content` 只有一个字**，于是它几乎被压成一列，按钮却完好 |
+| `rounded-full` | 容器被文字撑得极高，`border-radius: 9999px` 收敛成圆 → 圆里装不下字 |
+
+改法：居中从 `left-1/2` + framer-motion `x:'-50%'` 换成 `inset-x-0` + `mx-auto` + `w-fit`，
+**可用宽度回到整个视口**，`w-fit` 再收回到内容宽；另加 `flex-wrap` 让超长文案在极窄屏换行而不是压字。
+
+⛔ 已在代码里留注释说明**不要**改回 `left-1/2` + `x:-50%`。
+
+**②「我的」页的登录 / 退出登录（`src/library/suites/netease/`）**
+
+实测发现未登录时那一屏只有一句「未登录 / 登录网易云后这里会显示你的歌单」的纯文案，**没有任何登录入口**；
+已登录时账号条也没有退出入口。陌生人装包后等于走投无路。
+
+- `NeteaseEmpty` 增加可选的 `action` 槽位（向后兼容，其余调用点不受影响）
+- 未登录：显示「登录」→ `account.selectProvider(activeProviderId)`
+  —— 走 `selectProvider` 而不是 `startLogin`，因为前者才是「现 Grid3D 的选平台规则」那一支
+  （provider 没配置时直接 `unavailable`，不会起一个注定失败的会话）
+- 已登录：账号条右侧加「退出登录」→ `account.logout(activeProviderId)`，用 ref 挡连点（logout 是异步的），
+  结果经 `onStatusMessage` 回报；登出后 `user` 变 null，页面自己翻回未登录态
+
+⛔ **踩坑（第一版按钮没出来）**：我一开始给两个按钮都套了 `can.has('account-login')` / `can.has('account-logout')`
+的门，结果按钮永远不渲染。账户动作只声明在 **account surface** 上（entry.ts 的 `ACCOUNT_ACTIONS`），
+`HOME_ACTIONS` 里没有它们，所以 `can`（读的是 home 的声明）永远不含这两项。
+**网格的既有写法就是首页直接调 controller**（`Grid3D` 的 `selectProvider` / `logout` 均无门）——
+`can` 是给 account surface 自己的界面和命令面板用的。已在代码里留注释防止再犯。
+
+二维码卡由 `LibraryAccountHost` 按 suite 解析并挂载 `NeteaseAccount` 渲染，本改动不新增第二套登录界面。
+
+**③ 登录弹窗把裸 i18n key 显示给用户（`src/library/suites/netease/NeteaseAccount.tsx`）**
+
+上面那个入口做出来之后一点「登录」，二维码是**真的出来了**（安卓上后端是通的，扫码可用），
+但标题 / 副标题 / 状态行显示的是 `home.loginTitle`、`home.loginNote`、`home.scanQr` 三个**裸 key**。
+
+根因：这个文件的翻译收口函数写成
+
+```ts
+return message.fallback || message.key;   // ← 根本没有调用 t()
+```
+
+而 core 给的这些文案**多数不带 fallback**，于是直接把 key 当文案显示。语言包里
+`home.loginTitle` = 「使用网易云APP扫码」是存在的，只是没人去查它。
+多登录方式的按钮 `{method.labelKey}` 同理。
+
+修法：收口函数改为绑定 `t`（`buildSay(t)`），`LoginCard` 里用 `useTranslation()` 取 `t`，
+`method.labelKey` 也过一遍 `t()`。`TFunction` 从 `i18next` 引——这个版本的 `react-i18next`
+没有再导出它（`GridAccountSurface.tsx` 也是这么写的）。
+
+⛔ 已留注释说明：**只 `return fallback || key` 不算翻译**。
+
+#### 验证
+
+- `npm run typecheck` exit 0
+- `npx vitest run test/unit/library`：95 文件 / 1017 测试全绿
+- 真机（一加 Ace 3 / Android 16，debug 包）逐条确认：
+  - ② 未登录时「我的」页橙色「登录」按钮正常渲染；已登录（`ShimoRay`，10 个歌单）时账号条右侧出现「退出登录」——两个分支都跑过
+  - ③ 点「登录」后二维码真的弹出来，标题 / 副标题 / 状态行显示「使用网易云APP扫码」/「打开网易云音乐APP > 发现 > 扫一扫」/「请扫描二维码」，**不再有裸 key**
+  - ① 见下面的对照测量
+
+**① 的真机对照测量**（`docs/dev/.tmp/toast-measure.mjs`）：
+在真机同一渲染引擎里，按修复前 / 修复后两套 class 各注入一个 `visibility:hidden` 的弹窗节点
+（文案取 `preview-only` 那句 24 个字，外加「取消」「跳过」两个按钮），量完即删：
+
+| | 修复前 `left-1/2` + `x:-50%` | 修复后 `inset-x-0` + `mx-auto` + `w-fit` |
+| --- | --- | --- |
+| 弹窗宽 | 198px，右边界 **−17px（溢出屏幕）** | 329px，左右各 16px 留白，居中且不溢出 |
+| 弹窗高 | 204px | 122px |
+| 文案 `span` | 宽 44px / 高 180px / **每字 1.7px** | 宽 281px / 高 40px / **每字 10.8px** |
+| flex-wrap | `nowrap` | `wrap` |
+
+计算样式同时证明 Tailwind 里确实生成了 `inset-x-0` / `mx-auto` / `w-fit` / `max-w-[calc(100vw-2rem)]`
+这几条规则（`left`/`right` 算得 0、`margin` 算得 16px），不是「class 在 JS 里但 CSS 没有」的空壳。
+这也复现了根因：旧写法下 `left` 算得视口一半（180.571px），可用宽度只剩半屏，
+24 个 CJK 字的 `min-content` 只有一个字，于是被压成 1.7px/字的竖条。
+
+#### 踩坑
+
+- 网易云首页的卡片是 `onPointerDown/onPointerUp` 的按压交互，**`el.click()` 根本不触发**；
+  而且它们带 `disabled={!isInteractive}`（只有「用户正看着的那一层」可交互），
+  别人正在操作手机时整屏卡片是 disabled 的 —— **验收阶段不要和用户抢同一台设备的控制权**。
+- 弹窗排版这类纯 CSS 问题，真机上「注入同款 class + `visibility:hidden` 量尺寸」
+  既零干扰又比截图硬：既能量到数，还能顺带证明 CSS 规则真的生成了。
+
+- release 包**不可调试**（无 `DEBUGGABLE`、无 WebView devtools socket），所以这轮验收只能截图 + `uiautomator dump`，
+  拿不到 DOM。查「二进制里有没有某段东西」时**直接解包 APK grep** 比截图硬得多。
+- `adb shell uiautomator dump` 在这个 App 上只能看到一个 NAF 的 `android.webkit.WebView` 节点，**读不到任何文字**，
+  不能靠它找元素，只能配合截图目视坐标。
+- 抓图前必查 `dumpsys activity activities | Select-String topResumedActivity`：本轮先抓到微信小视频，
+  差点误判成 App 没渲染。
+- 无线 adb 装 18MB 的包，手机息屏时会慢到看起来像卡死（实测 >5 分钟）。装之前先 `KEYCODE_WAKEUP` + `svc power stayon usb`。
+
 ### `dev-2026-10-16-android-v0-7-19-published` — 发布：`android-v0.7.19` 已上线，二进制与对应源码同处
 
 **性质**：发布。状态：✅ 已发布并标记为 latest。

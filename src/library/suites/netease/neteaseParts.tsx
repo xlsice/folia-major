@@ -513,12 +513,13 @@ export const NeteaseSectionTitle: React.FC<{ children: React.ReactNode; count?: 
  *   还有别的区块，居中反而会把它顶到奇怪的位置，保持原来的顶部排布。
  * 一刀切改成居中会把后者做坏，所以用 props 分开。
  */
-export const NeteaseEmpty: React.FC<{ message: string; hint?: string; fill?: boolean }> = ({ message, hint, fill = false }) => (
+export const NeteaseEmpty: React.FC<{ message: string; hint?: string; fill?: boolean; action?: React.ReactNode }> = ({ message, hint, fill = false, action }) => (
     <div
         className={`flex flex-col items-center justify-center gap-1 px-8 text-center ${fill ? 'min-h-full py-16' : 'py-16'}`}
     >
         <NeteaseCloudText text={message} tier="title" className="nt-t-title" style={{ color: 'var(--nt-text-muted)' }} />
         {hint && <NeteaseCloudText text={hint} tier="meta" delay={0.06} className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }} />}
+        {action && <div className="mt-5">{action}</div>}
     </div>
 );
 

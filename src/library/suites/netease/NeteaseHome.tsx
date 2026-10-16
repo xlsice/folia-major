@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, FolderOpen, ListMusic, Radio, RefreshCw, Plus, HardDrive, Library as LibraryIcon, Server, User } from 'lucide-react';
+import { Compass, FolderOpen, ListMusic, LogIn, LogOut, Radio, RefreshCw, Plus, HardDrive, Library as LibraryIcon, Server, User } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { omni } from '../../../services/onlineMusic/omni';
 import { getSongCoverUrl } from '../../../services/onlineMusic/songMetadata';
@@ -690,6 +690,39 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
         );
     };
 
+    /** 「我的」页的登录入口。
+     *
+     * 走 account.selectProvider 而不是 startLogin：它才是「现 Grid3D 的选平台规则」那一支
+     * （provider 没配置时直接 unavailable，不会起一个注定失败的会话；能直接切时先问用户）。
+     *
+     * ⛔ **不要**用 `can.has('account-login')` 之类再套一层门：账户动作只声明在 account surface 上，
+     * HOME_ACTIONS 里没有它们（见 entry.ts）。网格的既有写法就是首页直接调 controller
+     * （Grid3D 的 selectProvider / logout 均无门），`can` 是给 account surface 自己的界面和命令面板用的。
+     * 套了门的结果就是按钮永远不显示。 */
+    const startLogin = () => {
+        void account.selectProvider(activeProviderId);
+    };
+
+    /** 退出登录。用 ref 挡连点：logout 是异步的，在它 resolve 之前用户还能再点一次。 */
+    const logoutInFlightRef = React.useRef(false);
+    const logout = () => {
+        if (logoutInFlightRef.current) return;
+        logoutInFlightRef.current = true;
+        void account.logout(activeProviderId).then(result => {
+            logoutInFlightRef.current = false;
+            if (result.status === 'logged-out') {
+                onStatusMessage?.({ type: 'success', text: '已退出登录', nonce: Date.now() });
+                return;
+            }
+            const detail = result.status === 'failed' ? result.message : null;
+            onStatusMessage?.({
+                type: 'error',
+                text: detail ? `退出登录失败：${detail}` : '退出登录失败',
+                nonce: Date.now(),
+            });
+        });
+    };
+
     /** 我的页（最后一屏）：登录用户自己的歌单 + 收藏 + 云盘。 */
     const renderMineTab = () => {
         if (!user) {
@@ -698,6 +731,17 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                     message="未登录"
                     hint="登录网易云后这里会显示你的歌单"
                     fill
+                    action={(
+                        <button
+                            type="button"
+                            onClick={startLogin}
+                            disabled={!isInteractive}
+                            className="flex items-center justify-center gap-1.5 rounded-full px-7 py-3 nt-t-item disabled:opacity-40"
+                            style={{ background: 'var(--nt-accent)', color: 'var(--nt-on-accent)' }}
+                        >
+                            <LogIn size={15} />登录
+                        </button>
+                    )}
                 />
             );
         }
@@ -720,6 +764,16 @@ const NeteaseHome: React.FC<LibraryHomeSurfaceProps> = ({
                         <NeteaseCloudText text={user.nickname} tier="display" className="truncate nt-t-display" style={{ color: 'var(--nt-text)' }} />
                         <NeteaseCloudText text={`${onlineCollections.length} 个歌单`} tier="meta" delay={0.06} className="nt-t-meta" style={{ color: 'var(--nt-text-faint)' }} />
                     </div>
+                    <button
+                        type="button"
+                        onClick={logout}
+                        disabled={!isInteractive}
+                        aria-label="退出登录"
+                        className="flex shrink-0 items-center gap-1 rounded-full px-3 py-2 nt-t-label disabled:opacity-40"
+                        style={{ background: 'var(--nt-hover)', color: 'var(--nt-text-muted)' }}
+                    >
+                        <LogOut size={14} />退出登录
+                    </button>
                 </div>
 
                 <NeteaseSectionTitle count={onlineCollections.length}>我创建的歌单</NeteaseSectionTitle>
