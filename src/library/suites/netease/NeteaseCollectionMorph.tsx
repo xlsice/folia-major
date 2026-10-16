@@ -95,6 +95,18 @@ export const NeteaseCollectionMorph: React.FC<{ enabled: boolean }> = ({ enabled
     const settle = React.useCallback(() => {
         flyingRef.current = false;
         flyingKeyRef.current = null;
+        // ⛔ **必须把记账里的 flyingKey 也清掉**，大图是靠它决定隐不隐藏的
+        // （NeteaseCollection 里 `heroHidden = flyingKey === 本歌单`）。
+        // 只清 ref 只让飞行层自己消失，大图永远停在 opacity: 0 ——
+        // 症状就是「打开歌单后详情页顶部一片空白，封面不见了」（真机实测踩到）。
+        //
+        // ⛔ 清之前先 consumeNeteaseMorphFresh：setNeteaseMorphFlying 会推进版本号，
+        // 而此刻记账还在。若 fresh 还是 true，渲染期的起飞判定会看到「版本号变了 +
+        // 账还在 + fresh 为真」就**再飞一次** —— 再落位、再推进、再起飞，
+        // 转场层把自己锁死在循环里（下面那个 effect 的注释里踩过一次同样的坑）。
+        // 起飞时已经 consume 过一次，这里是第二道保险。
+        consumeNeteaseMorphFresh();
+        setNeteaseMorphFlying(null);
         setFlight(null);
     }, []);
 

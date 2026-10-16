@@ -8,6 +8,83 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-16-netease-hero-cover-missing` — 修复：歌单详情页顶部封面一直不出现
+
+**性质**：bugfix（回归）。状态：代码修复 + 真机验证通过 + 新增 5 条契约单测。
+引入于 `b0b7ae97`（封面飞出），被 `b6a80125` 的 bug3「大图飞行途中隐藏」放大到必现。
+
+#### 症状
+
+打开歌单详情页后顶部一大片空白，**封面图不见了**；标题、曲名、时长都正常。
+
+#### 根因
+
+bug3「飞行途中把大图藏起来，落位后再露」是这么实现的：
+
+```ts
+// NeteaseCollection.tsx:119
+const heroHidden = morphSnapshot.flyingKey !== null && morphSnapshot.flyingKey === String(collection.id);
+```
+
+而**落位时把 `flyingKey` 清回 null 这一步漏了**。`NeteaseCollectionMorph` 的 `settle()` 只做了三件事：
+
+```ts
+flyingRef.current = false;
+flyingKeyRef.current = null;   // ← 只清了组件自己的 ref
+setFlight(null);               // ← 飞行层消失
+```
+
+**没有调 `setNeteaseMorphFlying(null)`** —— 也就是 store 里那个 `flyingKey` 永远停在集合 id 上。
+
+于是：飞行的封面正常落位、飞行层正常消失，但详情页那张大图**永远停在 `opacity: 0`**。
+`neteaseMorph.ts` 里 `setNeteaseMorphFlying` 的注释本来就写着「飞行开始 / **结束**，
+告诉详情页那张大图『你该藏起来 / **可以露面了**』」——设计是要在落位时传 `null` 的，
+只是没落到代码里。
+
+为什么这么隐蔽：
+
+- 它**不报错、不闪退**，只是有一层 `opacity: 0`；
+- 飞行层是在 `document.body` 上的 portal，落下就消失，观感上「转场是正常的」；
+- 截图上顶部是 `coverTint` 那层整页染色 + 过渡带，看着像「设计如此」，很容易当成没 bug；
+- 只在**第一次**打开时必现 —— 再开一次时 `armNeteaseMorphOpen` 顺手把 `flyingKey` 重置成 null 了。
+
+#### 真机取证（修复前）
+
+```
+t≈700ms   opacity "0"  有img true  img_complete true  natural 800×800  box [361,361,0]  飞行层在场 false
+t≈1500ms  opacity "0"  …
+t≈3000ms  opacity "0"  …
+t≈6000ms  opacity "0"  …
+```
+
+图**已完整解码**、URL 正常、几何正确 —— 唯一的问题是那层 `opacity` 永远是 0。
+这条证据同时排除了「封面 404 / 取不到图 / 布局塌了」三个更直觉的方向。
+
+#### 修法
+
+`settle()` 里补上通知，清之前先 `consumeNeteaseMorphFresh()`：
+
+```ts
+consumeNeteaseMorphFresh();
+setNeteaseMorphFlying(null);
+```
+
+⛔ 顺序不能反：`setNeteaseMorphFlying` 会推进版本号，而此刻记账还在。若 `fresh` 还是 true，
+渲染期的起飞判定会看到「版本号变了 + 账还在 + fresh 为真」就**再飞一次**，再落位、再推进、
+再起飞 —— 转场层把自己锁死在循环里。这个坑之前在起飞那侧踩过一次（见 `consumeNeteaseMorphFresh`
+的注释），这次是同一根因的另一面。
+
+#### 一条补不了的测试，说明白
+
+组件里「落位有没有通知大图露面」这种**漏调一次**的 bug，本仓库**没有 React 测试库**
+（`@testing-library/react` / `react-test-renderer` 都没有），所以单测兜不住。
+新加的 `test/unit/neteaseMorph/neteaseMorphContract.test.ts` 钉的是 store 语义
+（置位/置回 null、重复置位不推进版本号、置 null 会推进版本号因而必须先 consume），
+**这些在修复前后都通过** —— 它防的是下一类同类改动，不是这一条。
+真正抓住这次回归的是真机那条 opacity 取证。
+
+---
+
 ### `dev-2026-10-15-netease-cloud-text` — 「浮云」文字效果：逐词柔和浮出
 
 **性质**：功能。状态：**代码完成、真机验证通过**、typecheck 干净、全量单测通过（新增 18 条）。
