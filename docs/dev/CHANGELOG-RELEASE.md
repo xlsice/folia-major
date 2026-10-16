@@ -8,6 +8,98 @@
 
 ## ⚡进行中（next release）
 
+### `dev-2026-10-16-agpl-section5b-notice` — 合规：把 AGPL-3.0 §5(b) 的显著声明做进 APK 里
+
+**性质**：合规（不是功能）。状态：真机验证通过 + 全量单测绿 + typecheck exit 0。
+
+#### 为什么现在做
+
+要分发 Android 分支的 APK，先核了协议的**分发条件**：
+
+- `LICENSE` 是**标准 AGPL-3.0，无任何附加条款**；`git diff main -- LICENSE` 为空，
+  `package.json` 的 `"license": "AGPL-3.0"` 与之一致。
+- 上游 README 里「仅供非营利使用」那句话**只在 README、不在 LICENSE** —— 法律上不是授权条件
+  （§4–6 明确允许收费），但代表作者意向，且 App 内置 KuGou/QQ/网易云音源的**版权风险远大于
+  「非营利」本身**。商用前仍应先开 issue 确认。
+
+⚠️ **动手前发现的硬缺口**：`git ls-remote --heads origin` 当时**只有 `main`**，
+`Android` 分支（45 个 commit）**根本没推到 GitHub**，而 fork 的 `main` 是零改动的上游快照
+（`git rev-list --left-right --count origin/main...upstream/main` = `38  0`）。
+这等于**分发闭源二进制**：拿 APK 的人找不到任何对应源码，直接撞 §6。已由雪冷水自行推送解决
+（`refs/heads/Android` = `f0161e2a`）。
+
+#### §5 的三项义务如何落地
+
+| 条款 | 要求 | 落点 |
+| --- | --- | --- |
+| §5(a) | 声明已作修改 + 日期 | 「开源许可」分区首段，首次修改日期 2026-10-13 |
+| §5(b) | 声明本作品以本许可证发布 | 同段：AGPL-3.0 发布、原许可证无附加条款 |
+| §6(d) | 二进制同处免费提供对应源码 | 分区内的源码链接 + **纯文本 URL** + 本构建 commit |
+
+#### 改动清单
+
+| 文件 | 改动 |
+| --- | --- |
+| `src/components/modal/settings/OpenSourceLicenseSection.tsx` | **新增**。声明分区，含 §5(a)(b) / §6 三段文案、两个跳转按钮、纯文本 URL、本构建溯源行 |
+| `settings/navigation/settingsAnchorModel.ts` | 注册 `openSourceLicense` 锚点（section `general`）—— `settingsAnchorCoverage.test.ts` 双向校验，漏登记会红 |
+| `settings/GeneralSettingsSubview.tsx` | 挂在**通用设置末尾**（PonderHintSettingsSection 之后） |
+| `src/components/modal/SettingsModal.tsx` | 帮助页「作者信息」页脚下方追加一行紧凑声明，**仅 `BUILD_KIND !== 'official'` 时渲染** |
+| `src/i18n/locales/{zh-CN,en,in}.ts` | 各 7 个 `options.*` 键 |
+
+#### 两个设计决定
+
+**为什么不走模组（`settingsSections` 注册表）。** AGPL 的声明必须**在任何构建里都存在、不可关闭**。
+模组系统默认关闭，且模组代码装在 `%APPDATA%/Folia/mods` —— **既不进 APK 也不进对应源码**。
+走模组等于把法律声明放在一个用户可以关掉、且不在分发物里的地方。
+
+**为什么源码 URL 同时以纯文本呈现。** §6(d) 原文要求「在二进制旁边**清楚地指明**去哪里取对应源码」。
+安卓壳里 `window.open` 不保证拉起系统浏览器（`openExternal` 在 Electron 走主进程、其余回落
+`window.open`，与 `grid/account/QrLoginFailureHelp` 同一套路），所以 URL 必须可长按复制，
+不能只做成一个点了没反应的链接。
+
+#### 本构建溯源
+
+`data-license-build` 用 vite 的 `__COMMIT_HASH__` / `__GIT_BRANCH__` / `__APP_VERSION__`
+（拿不到时回落 `dev` / `unknown`，与 `amllApi.ts` 同一套守卫）。
+这让**二进制 ↔ 对应源码的对应关系可被任何人当场核对**，本轮实测值：
+
+```
+本构建对应：0.7.19 · Android · f0161e2a
+```
+
+`f0161e2a` 就是当时 `origin/Android` 的 HEAD。
+
+#### 真机验证（一加 Ace 3 / Android 16）
+
+```
+adb install -r -d app-debug.apk        → Success
+dumpsys package lastUpdateTime        → 2026-10-16 13:43:17（晚于 APK 的 13:42:59，确认装的是新包）
+清 SW + caches → force-stop → 重启 pid 2390
+```
+
+- 设置 → 选项 → 界面设置 → 滑到底 → **⚖ 开源许可**分区正常渲染
+- `document.querySelector('[data-license-source-url]')` → `https://github.com/xlsice/folia-major`
+- `document.querySelector('[data-license-build]')` → `f0161e2a`
+- 帮助页页脚 `data-license-notice="footer"` → 「二次开发版本 · AGPL-3.0 github.com/xlsice/folia-major」
+
+#### 踩坑：安卓没有设置入口，坐标点不到
+
+本来打算截图验收，结果在真机上**找不到任何设置入口**：netease suite 接管了整个首页
+（`librarySuiteOwnsHomePlayerBar`），5 个底栏标签、播放面板 5 个页签全扫过，
+全文档 `TreeWalker` 搜「设置 / 选项 / 许可」**零命中**；播放面板也没有可滚动容器。
+
+⇒ 设置的唯一入口是 **命令面板 Ctrl+K**（`docs/dev/AGENTS.md` 已记），而安卓没有物理 Ctrl。
+解法是 CDP `Input.dispatchKeyEvent` 带 `modifiers=2` 派发，绕开键盘直接触发。
+两个临时探针放在 `docs/dev/.tmp/`（已被 `docs/dev/.gitignore` 忽略）：
+
+```bash
+node docs/dev/.tmp/cdp-eval.mjs "<expression>"   # 对页面求值
+node docs/dev/.tmp/cdp-key.mjs  k  2             # 派发 Ctrl+K（1=Alt 2=Ctrl 4=Meta 8=Shift）
+```
+
+⚠️ **后续导航全部改用 DOM 点击而不是坐标点**。坐标点击打到了系统层
+（误触起一个 Douyin 视频窗口盖住设置面板），改用「按文本找元素 → `el.click()`」后一次到位。
+
 ### `dev-2026-10-16-netease-hero-cover-missing` — 修复：歌单详情页顶部封面一直不出现
 
 **性质**：bugfix（回归）。状态：代码修复 + 真机验证通过 + 新增 5 条契约单测。

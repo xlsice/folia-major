@@ -12,6 +12,7 @@ import LibrarySuiteSection from './LibrarySuiteSection';
 import BravaisSettingsSection from './BravaisSettingsSection';
 import PlayerBottomBarSection from './PlayerBottomBarSection';
 import HomeCardPositionSection from './HomeCardPositionSection';
+import OpenSourceLicenseSection from './OpenSourceLicenseSection';
 import { SettingsAnchor } from './navigation/SettingsAnchorContext';
 import SettingsSectionHeading from './navigation/SettingsSectionHeading';
 import { settingsDividerClassFor } from './settingsCardClasses';
@@ -227,6 +228,11 @@ const GeneralSettingsSubview: React.FC<GeneralSettingsSubviewProps> = ({
                 settingsCardClass={settingsCardClass}
                 isDaylight={isDaylight}
                 accentColor={theme?.accentColor}
+            />
+
+            <OpenSourceLicenseSection
+                settingsCardClass={settingsCardClass}
+                utilityGhostButtonClass={utilityGhostButtonClass}
             />
         </div>
     );

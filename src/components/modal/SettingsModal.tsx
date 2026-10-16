@@ -1545,6 +1545,26 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                             <a href="https://github.com/chthollyphile/folia-major" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors underline decoration-white/30 hover:decoration-white">chthollyphile/folia-major</a>
                                         </p>
                                     </div>
+                                    {/* 二开构建的许可声明（AGPL-3.0 §5(b)）。官方构建走上游自己的 LICENSE，
+                                        不重复这一行；非官方 / 自部署构建才需要把「本作品以 AGPL-3.0 发布」
+                                        摆在作品自己的界面上，而不是只写在可能随时删掉的 Release 说明里。 */}
+                                    {BUILD_KIND !== 'official' && (
+                                        <p
+                                            className="mt-2 text-[11px] opacity-60"
+                                            style={{ color: 'var(--text-secondary)' }}
+                                            data-license-notice="footer"
+                                        >
+                                            {t('options.footerLicenseNotice')}{' '}
+                                            <a
+                                                href="https://github.com/xlsice/folia-major"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="underline decoration-white/30 hover:decoration-white transition-colors"
+                                            >
+                                                github.com/xlsice/folia-major
+                                            </a>
+                                        </p>
+                                    )}
                                     <div className="flex flex-col items-center gap-2 mt-6 mb-2 text-xs font-mono text-center">
                                         {/* 第一行：原本的版本信息按钮 */}
                                         <button

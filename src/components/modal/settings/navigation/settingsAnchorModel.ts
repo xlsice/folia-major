@@ -30,6 +30,9 @@ export const SETTINGS_ANCHOR_DEFINITIONS = {
     bottomUiSettings: { section: 'general', labelKey: 'options.bottomUiSettings' },
     pinnedCommands: { section: 'general', labelKey: 'options.pinnedCommands' },
     ponderHints: { section: 'general', labelKey: 'options.ponderHints' },
+    // AGPL-3.0 §5(b) 的显著声明。放在通用设置末尾：它是法律声明，必须在任何构建里都渲染、
+    // 不可关闭，所以不能做成模组（模组默认关闭，且不进 APK 也不进对应源码）。
+    openSourceLicense: { section: 'general', labelKey: 'options.openSourceLicense' },
 
     // PlaybackSettingsSubview (TransitionSettingsSection renders inside it)
     queueSettings: { section: 'playback', labelKey: 'options.queueSettings' },

@@ -307,6 +307,37 @@ Ctrl+K  →  输入「商籁」  →  「切换到可视化：商籁」(visualiz
 
 设置里那张「歌词动画样式」卡片点进去是**当前模式**的参数编辑器，不是模式选择器。
 
+### ⛔ 安卓端没有设置入口，只有 Ctrl+K；且 CDP 探针别用坐标点，用 DOM 点击
+
+真机上**找不到任何设置入口**（2026-10-16 实测）：netease suite 接管整个首页，5 个底栏标签、
+播放面板 5 个页签全扫过，全文档 `TreeWalker` 搜「设置 / 选项 / 许可」**零命中**。
+⇒ 命令面板 `Ctrl+K` 是唯一入口，而安卓**没有物理 Ctrl 键**。
+
+```bash
+adb -s <dev> forward tcp:9222 localabstract:webview_devtools_remote_<pid>
+# modifiers 位：1=Alt 2=Ctrl 4=Meta 8=Shift
+node docs/dev/.tmp/cdp-key.mjs k 2      # 派发 Ctrl+K，打开命令面板
+```
+
+⚠️ **导航一律用「按文本找元素 → `el.click()`」，不要用 `adb input tap` 坐标点。**
+本轮坐标点直接打到了系统层，误触起一个 Douyin 视频窗口盖住设置面板，白绕好几轮。
+DOM 点击按文本命中，一次到位。
+
+⚠️ 命令面板的输入框**不是页面的第一个 `<input>`**（netease 首页那个「搜索歌单」排在前面）。
+按 placeholder 找（`输入一个功能或命令试试看`），别按下标取。
+
+### ⛔ 重装 APK 后必须清 Service Worker，否则验的是上一版
+
+见下方 `android-build.ps1 只打包不装机` 那条。补一条判定：本轮 `dist/assets` 时间戳
+（13:42:47）比 APK（13:42:59）早是正常的，看 `dumpsys package` 的 `lastUpdateTime`
+是否**晚于** APK 的 `LastWriteTime` 才算装上。
+
+⚠️ 但**清了 SW 也不等于新代码在跑** —— 设置面板这类组件是**懒加载 chunk**，
+`document.querySelectorAll('script[src]')` 只有 3 个标签，扫不到它们的文案，
+此时搜字符串必然是 `false`，**不能据此判定构建没生效**。
+先直接查 `android/app/src/main/assets/public/assets/*.js` 里有没有那串文案，
+再进 UI 用 DOM 取证。
+
 ### ⛔ tuning 面板的位置：对应模式的「歌词动画」tab，不是「通用」tab
 
 ```
